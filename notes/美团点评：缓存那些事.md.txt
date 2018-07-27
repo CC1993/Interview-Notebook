@@ -1,0 +1,551 @@
+# 美团点评：缓存那些事
+
+https://tech.meituan.com/cache_about.html
+
+**本文已发表于《程序员》杂志 2017 年第 3 期，下面的版本又经过进一步的修订。**
+
+## 前言
+
+一般而言，现在互联网应用（网站或 App）的整体流程，可以概括如图 1 所示，用户请求从界面（浏览器或 App 界面）到网络转发、应用服务再到存储（数据库或文件系统），然后返回到界面呈现内容。
+
+随着互联网的普及，内容信息越来越复杂，用户数和访问量越来越大，我们的应用需要支撑更多的并发量，同时我们的应用服务器和数据库服务器所做的计算也越来越多。但是往往我们的应用服务器资源是有限的，且技术变革是缓慢的，数据库每秒能接受的请求次数也是有限的（或者文件的读写也是有限的），如何能够有效利用有限的资源来提供尽可能大的吞吐量？一个有效的办法就是引入缓存，打破标准流程，每个环节中请求可以从缓存中直接获取目标数据并返回，从而减少计算量，有效提升响应速度，让有限的资源服务更多的用户。
+
+如图 1 所示，缓存的使用可以出现在 1～4 的各个环节中，每个环节的缓存方案与使用各有特点。
+
+![](https://tech.meituan.com/img/cache_about/%E7%BD%91%E7%BB%9C%E5%BA%94%E7%94%A8%E4%B8%80%E8%88%AC%E6%B5%81%E7%A8%8B.png)
+
+图 1 互联网应用一般流程
+
+## 缓存特征
+
+缓存也是一个数据模型对象，那么必然有它的一些特征
+
+### 命中率
+
+命中率 = 返回正确结果数 / 请求缓存次数，命中率问题是缓存中的一个非常重要的问题，它是衡量缓存有效性的重要指标。命中率越高，表明缓存的使用率越高。
+
+### 最大元素（或最大空间）
+
+缓存中可以存放的最大元素的数量，一旦缓存中元素数量超过这个值（或者缓存数据所占空间超过其最大支持空间），那么将会触发缓存启动清空策略根据不同的场景合理的设置最大元素值往往可以一定程度上提高缓存的命中率，从而更有效的时候缓存。
+
+### 清空策略
+
+如上描述，缓存的存储空间有限制，当缓存空间被用满时，如何保证在稳定服务的同时有效提升命中率？这就由缓存清空策略来处理，设计适合自身数据特征的清空策略能有效提升命中率。常见的一般策略有：
+
+**FIFO(first in first out)**
+
+先进先出策略，最先进入缓存的数据在缓存空间不够的情况下（超出最大元素限制）会被优先被清除掉，以腾出新的空间接受新的数据。策略算法主要比较缓存元素的创建时间。在数据实效性要求场景下可选择该类策略，优先保障最新数据可用。
+
+**LFU(less frequently used)**
+
+最少使用策略，无论是否过期，根据元素的被使用次数判断，清除使用次数较少的元素释放空间。策略算法主要比较元素的 hitCount（命中次数）。在保证高频数据有效性场景下，可选择这类策略。
+
+**LRU(least recently used)**
+
+最近最少使用策略，无论是否过期，根据元素最后一次被使用的时间戳，清除最远使用时间戳的元素释放空间。策略算法主要比较元素最近一次被 get 使用时间。在热点数据场景下较适用，优先保证热点数据的有效性。
+
+除此之外，还有一些简单策略比如：
+
+- 根据过期时间判断，清理过期时间最长的元素；
+- 根据过期时间判断，清理最近要过期的元素；
+- 随机清理；
+- 根据关键字（或元素内容）长短清理等。
+
+## 缓存介质
+
+虽然从硬件介质上来看，无非就是内存和硬盘两种，但从技术上，可以分成内存、硬盘文件、数据库。
+
+- **内存：**将缓存存储于内存中是最快的选择，无需额外的 I/O 开销，但是内存的缺点是没有持久化落地物理磁盘，一旦应用异常 break down 而重新启动，数据很难或者无法复原。
+
+- **硬盘：**一般来说，很多缓存框架会结合使用内存和硬盘，在内存分配空间满了或是在异常的情况下，可以被动或主动的将内存空间数据持久化到硬盘中，达到释放空间或备份数据的目的。
+
+- **数据库：**前面有提到，增加缓存的策略的目的之一就是为了减少数据库的 I/O 压力。现在使用数据库做缓存介质是不是又回到了老问题上了？其实，数据库也有很多种类型，像那些不支持 SQL，只是简单的 key-value 存储结构的特殊数据库（如 BerkeleyDB 和 Redis），响应速度和吞吐量都远远高于我们常用的关系型数据库等。
+
+## 缓存分类和应用场景
+
+缓存有各类特征，而且有不同介质的区别，那么实际工程中我们怎么去对缓存分类呢？在目前的应用服务框架中，比较常见的是根据缓存应用的藕合度，分为 local cache（本地缓存）和 remote cache（分布式缓存）：
+
+- **本地缓存**：指的是在应用中的缓存组件，其最大的优点是应用和 cache 是在同一个进程内部，请求缓存非常快速，没有过多的网络开销等，在单应用不需要集群支持或者集群情况下各节点无需互相通知的场景下使用本地缓存较合适；同时，它的缺点也是应为缓存跟应用程序耦合，多个应用程序无法直接的共享缓存，各应用或集群的各节点都需要维护自己的单独缓存，对内存是一种浪费。
+
+- **分布式缓存**：指的是与应用分离的缓存组件或服务，其最大的优点是自身就是一个独立的应用，与本地应用隔离，多个应用可直接的共享缓存。
+
+目前各种类型的缓存都活跃在成千上万的应用服务中，还没有一种缓存方案可以解决一切的业务场景或数据类型，我们需要根据自身的特殊场景和背景，选择最适合的缓存方案。缓存的使用是程序员、架构师的必备技能，好的程序员能根据数据类型、业务场景来准确判断使用何种类型的缓存，如何使用这种缓存，以最小的成本最快的效率达到最优的目的。
+
+## 本地缓存
+
+### 编程直接实现缓存
+
+个别场景下，我们只需要简单的缓存数据的功能，而无需关注更多存取、清空策略等深入的特性时，直接编程实现缓存则是最便捷和高效的。
+
+**a. 成员变量或局部变量实现**
+
+简单代码示例如下：
+
+```
+    public void UseLocalCache(){
+     //一个本地的缓存变量
+     Map<String, Object> localCacheStoreMap = new HashMap<String, Object>();
+
+    List<Object> infosList = this.getInfoList();
+    for(Object item:infosList){
+        if(localCacheStoreMap.containsKey(item)){ //缓存命中 使用缓存数据
+            // todo
+        } else { // 缓存未命中  IO获取数据，结果存入缓存
+            Object valueObject = this.getInfoFromDB();
+            localCacheStoreMap.put(valueObject.toString(), valueObject);
+
+        }
+    }
+}
+//示例
+private List<Object> getInfoList(){
+    return new ArrayList<Object>();
+}
+//示例数据库IO获取
+private Object getInfoFromDB(){
+    return new Object();
+}
+```
+
+以局部变量 map 结构缓存部分业务数据，减少频繁的重复数据库 I/O 操作。缺点仅限于类的自身作用域内，类间无法共享缓存。
+
+**b. 静态变量实现**
+
+最常用的单例实现静态资源缓存，代码示例如下：
+
+```
+      public class CityUtils {
+      private static final HttpClient httpClient = ServerHolder.createClientWithPool(); 
+      private static Map<Integer, String> cityIdNameMap = new HashMap<Integer, String>();
+      private static Map<Integer, String> districtIdNameMap = new HashMap<Integer, String>();
+
+  static {
+    HttpGet get = new HttpGet("http://gis-in.sankuai.com/api/location/city/all");
+    BaseAuthorizationUtils.generateAuthAndDateHeader(get,
+            BaseAuthorizationUtils.CLIENT_TO_REQUEST_MDC,
+            BaseAuthorizationUtils.SECRET_TO_REQUEST_MDC);
+    try {
+        String resultStr = httpClient.execute(get, new BasicResponseHandler());
+        JSONObject resultJo = new JSONObject(resultStr);
+        JSONArray dataJa = resultJo.getJSONArray("data");
+        for (int i = 0; i < dataJa.length(); i++) {
+            JSONObject itemJo = dataJa.getJSONObject(i);
+            cityIdNameMap.put(itemJo.getInt("id"), itemJo.getString("name"));
+        }
+    } catch (Exception e) {
+        throw new RuntimeException("Init City List Error!", e);
+    }
+}
+    static {
+    HttpGet get = new HttpGet("http://gis-in.sankuai.com/api/location/district/all");
+    BaseAuthorizationUtils.generateAuthAndDateHeader(get,
+            BaseAuthorizationUtils.CLIENT_TO_REQUEST_MDC,
+            BaseAuthorizationUtils.SECRET_TO_REQUEST_MDC);
+    try {
+        String resultStr = httpClient.execute(get, new BasicResponseHandler());
+        JSONObject resultJo = new JSONObject(resultStr);
+        JSONArray dataJa = resultJo.getJSONArray("data");
+        for (int i = 0; i < dataJa.length(); i++) {
+            JSONObject itemJo = dataJa.getJSONObject(i);
+            districtIdNameMap.put(itemJo.getInt("id"), itemJo.getString("name"));
+        }
+    } catch (Exception e) {
+        throw new RuntimeException("Init District List Error!", e);
+    }
+}
+
+    public static String getCityName(int cityId) {
+      String name = cityIdNameMap.get(cityId);
+      if (name == null) {
+        name = "未知";
+      }
+       return name;
+     }
+
+    public static String getDistrictName(int districtId) {
+      String name = districtIdNameMap.get(districtId);
+       if (name == null) {
+         name = "未知";
+        }
+       return name;
+     }
+   }
+
+```
+
+O2O 业务中常用的城市基础基本信息判断，通过静态变量一次获取缓存内存中，减少频繁的 I/O 读取，静态变量实现类间可共享，进程内可共享，缓存的实时性稍差。
+
+为了解决本地缓存数据的实时性问题，目前大量使用的是结合 ZooKeeper 的自动发现机制，实时变更本地静态变量缓存：
+
+美团内部的基础配置组件 MtConfig，采用的就是类似原理，使用静态变量缓存，结合 ZooKeeper 的统一管理，做到自动动态更新缓存，如图 2 所示。
+
+![](https://tech.meituan.com/img/cache_about/mtconfig%E5%AE%9E%E7%8E%B0%E5%9B%BE.png)
+
+图 2 Mtconfig 实现图
+
+> **这类缓存实现，优点是能直接在 heap 区内读写，最快也最方便；缺点同样是受 heap 区域影响，缓存的数据量非常有限，同时缓存时间受 GC 影响。主要满足单机场景下的小数据量缓存需求，同时对缓存数据的变更无需太敏感感知，如上一般配置管理、基础静态数据等场景。**
+
+### Ehcache
+
+Ehcache 是现在最流行的纯 Java 开源缓存框架，配置简单、结构清晰、功能强大，是一个非常轻量级的缓存实现，我们常用的 Hibernate 里面就集成了相关缓存功能。
+
+![](https://tech.meituan.com/img/cache_about/ehcach%E6%A1%86%E6%9E%B6%E5%9B%BE.png)
+
+图 3 Ehcache 框架图
+
+从图 3 中我们可以了解到，Ehcache 的核心定义主要包括：
+
+*   **cache manager：**缓存管理器，以前是只允许单例的，不过现在也可以多实例了。
+
+*   **cache：**缓存管理器内可以放置若干 cache，存放数据的实质，所有 cache 都实现了 Ehcache 接口，这是一个真正使用的缓存实例；通过缓存管理器的模式，可以在单个应用中轻松隔离多个缓存实例，独立服务于不同业务场景需求，缓存数据物理隔离，同时需要时又可共享使用。
+
+*   **element：**单条缓存数据的组成单位。
+
+*   **system of record（SOR）：**可以取到真实数据的组件，可以是真正的业务逻辑、外部接口调用、存放真实数据的数据库等，缓存就是从 SOR 中读取或者写入到 SOR 中去的。
+
+在上层可以看到，整个 Ehcache 提供了对 JSR、JMX 等的标准支持，能够较好的兼容和移植，同时对各类对象有较完善的监控管理机制。它的缓存介质涵盖堆内存（heap）、堆外内存（BigMemory 商用版本支持）和磁盘，各介质可独立设置属性和策略。Ehcache 最初是独立的本地缓存框架组件，在后期的发展中，结合 Terracotta 服务阵列模型，可以支持分布式缓存集群，主要有 RMI、JGroups、JMS 和 Cache Server 等传播方式进行节点间通信，如图 3 的左侧部分描述。
+
+整体数据流转包括这样几类行为:
+
+*   Flush：缓存条目向低层次移动。
+*   Fault：从低层拷贝一个对象到高层。在获取缓存的过程中，某一层发现自己的该缓存条目已经失效，就触发了 Fault 行为。
+*   Eviction：把缓存条目除去。
+*   Expiration：失效状态。
+*   Pinning：强制缓存条目保持在某一层。
+
+图 4 反映了数据在各个层之间的流转，同时也体现了各层数据的一个生命周期。
+
+![](https://tech.meituan.com/img/cache_about/ehcach%E7%BC%93%E5%AD%98%E6%95%B0%E6%8D%AE%E6%B5%81%E8%BD%AC%E5%9B%BE.png)
+
+图 4 缓存数据流转图（L1: 本地内存层；L2:Terracotta 服务节点层)
+
+Ehcache 的配置使用如下：
+
+```
+<ehcache>
+<!-- 指定一个文件目录，当Ehcache把数据写到硬盘上时，将把数据写到这个文件目录下 -->
+<diskStore path="java.io.tmpdir"/>
+
+<!-- 设定缓存的默认数据过期策略 -->
+<defaultCache
+        maxElementsInMemory="10000"
+        eternal="false"
+        overflowToDisk="true"
+        timeToIdleSeconds="0"
+        timeToLiveSeconds="0"
+        diskPersistent="false"
+        diskExpiryThreadIntervalSeconds="120"/>
+
+<!--  
+    设定具体的命名缓存的数据过期策略
+
+    cache元素的属性：
+        name：缓存名称
+
+        maxElementsInMemory：内存中最大缓存对象数
+
+        maxElementsOnDisk：硬盘中最大缓存对象数，若是0表示无穷大
+
+        eternal：true表示对象永不过期，此时会忽略timeToIdleSeconds和timeToLiveSeconds属性，默认为false
+
+        overflowToDisk：true表示当内存缓存的对象数目达到了maxElementsInMemory界限后，会把溢出的对象写到硬盘缓存中。注意：如果缓存的对象要写入到硬盘中的话，则该对象必须实现了Serializable接口才行。
+
+        diskSpoolBufferSizeMB：磁盘缓存区大小，默认为30MB。每个Cache都应该有自己的一个缓存区。
+
+        diskPersistent：是否缓存虚拟机重启期数据
+
+        diskExpiryThreadIntervalSeconds：磁盘失效线程运行时间间隔，默认为120秒
+
+        timeToIdleSeconds： 设定允许对象处于空闲状态的最长时间，以秒为单位。当对象自从最近一次被访问后，如果处于空闲状态的时间超过了timeToIdleSeconds属性值，这个对象就会过期，EHCache将把它从缓存中清空。只有当eternal属性为false，该属性才有效。如果该属性值为0，则表示对象可以无限期地处于空闲状态
+
+        timeToLiveSeconds：设定对象允许存在于缓存中的最长时间，以秒为单位。当对象自从被存放到缓存中后，如果处于缓存中的时间超过了 timeToLiveSeconds属性值，这个对象就会过期，Ehcache将把它从缓存中清除。只有当eternal属性为false，该属性才有效。如果该属性值为0，则表示对象可以无限期地存在于缓存中。timeToLiveSeconds必须大于timeToIdleSeconds属性，才有意义
+
+        memoryStoreEvictionPolicy：当达到maxElementsInMemory限制时，Ehcache将会根据指定的策略去清理内存。可选策略有：LRU（最近最少使用，默认策略）、FIFO（先进先出）、LFU（最少访问次数）。
+-->
+<cache name="CACHE1"
+       maxElementsInMemory="1000"
+       eternal="true"
+       overflowToDisk="true"/>  
+
+<cache name="CACHE2"
+    maxElementsInMemory="1000"
+    eternal="false"
+    timeToIdleSeconds="200"
+    timeToLiveSeconds="4000"
+    overflowToDisk="true"/>
+</ehcache>
+
+```
+
+> **整体上看，Ehcache 的使用还是相对简单便捷的，提供了完整的各类 API 接口。需要注意的是，虽然 Ehcache 支持磁盘的持久化，但是由于存在两级缓存介质，在一级内存中的缓存，如果没有主动的刷入磁盘持久化的话，在应用异常 down 机等情形下，依然会出现缓存数据丢失，为此可以根据需要将缓存刷到磁盘，将缓存条目刷到磁盘的操作可以通过 cache.flush() 方法来执行，需要注意的是，对于对象的磁盘写入，前提是要将对象进行序列化。**
+
+**主要特性：**
+
+*   快速，针对大型高并发系统场景，Ehcache 的多线程机制有相应的优化改善。
+*   简单，很小的 jar 包，简单配置就可直接使用，单机场景下无需过多的其他服务依赖。
+*   支持多种的缓存策略，灵活。
+*   缓存数据有两级：内存和磁盘，与一般的本地内存缓存相比，有了磁盘的存储空间，将可以支持更大量的数据缓存需求。
+*   具有缓存和缓存管理器的侦听接口，能更简单方便的进行缓存实例的监控管理。
+*   支持多缓存管理器实例，以及一个实例的多个缓存区域。
+
+> **注意：Ehcache 的超时设置主要是针对整个 cache 实例设置整体的超时策略，而没有较好的处理针对单独的 key 的个性的超时设置（有策略设置，但是比较复杂，就不描述了），因此，在使用中要注意过期失效的缓存元素无法被 GC 回收，时间越长缓存越多，内存占用也就越大，内存泄露的概率也越大。**
+
+### Guava Cache
+
+Guava Cache 是 Google 开源的 Java 重用工具集库 Guava 里的一款缓存工具，其主要实现的缓存功能有：
+
+*   自动将 entry 节点加载进缓存结构中；
+*   当缓存的数据超过设置的最大值时，使用 LRU 算法移除；
+*   具备根据 entry 节点上次被访问或者写入时间计算它的过期机制；
+*   缓存的 key 被封装在 WeakReference 引用内；
+*   缓存的 Value 被封装在 WeakReference 或 SoftReference 引用内；
+*   统计缓存使用过程中命中率、异常率、未命中率等统计数据。
+
+Guava Cache 的架构设计灵感来源于 ConcurrentHashMap，我们前面也提到过，简单场景下可以自行编码通过 hashmap 来做少量数据的缓存，但是，如果结果可能随时间改变或者是希望存储的数据空间可控的话，自己实现这种数据结构还是有必要的。
+
+Guava Cache 继承了 ConcurrentHashMap 的思路，使用多个 segments 方式的细粒度锁，在保证线程安全的同时，支持高并发场景需求。Cache 类似于 Map，它是存储键值对的集合，不同的是它还需要处理 evict、expire、dynamic load 等算法逻辑，需要一些额外信息来实现这些操作。对此，根据面向对象思想，需要做方法与数据的关联封装。如图 5 所示 cache 的内存数据模型，可以看到，使用 ReferenceEntry 接口来封装一个键值对，而用 ValueReference 来封装 Value 值，之所以用 Reference 命令，是因为 Cache 要支持 WeakReference Key 和 SoftReference、WeakReference value。
+
+![](https://tech.meituan.com/img/cache_about/guavacache%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E5%9B%BE.png)
+
+图 5 Guava Cache 数据结构图
+
+**ReferenceEntry** 是对一个键值对节点的抽象，它包含了 key 和值的 ValueReference 抽象类，Cache 由多个 Segment 组成，而每个 Segment 包含一个 ReferenceEntry 数组，每个 ReferenceEntry 数组项都是一条 ReferenceEntry 链，且一个 ReferenceEntry 包含 key、hash、valueReference、next 字段。除了在 ReferenceEntry 数组项中组成的链，在一个 Segment 中，所有 ReferenceEntry 还组成 access 链（accessQueue）和 write 链（writeQueue）（后面会介绍链的作用）。ReferenceEntry 可以是强引用类型的 key，也可以 WeakReference 类型的 key，为了减少内存使用量，还可以根据是否配置了 expireAfterWrite、expireAfterAccess、maximumSize 来决定是否需要 write 链和 access 链确定要创建的具体 Reference：StrongEntry、StrongWriteEntry、StrongAccessEntry、StrongWriteAccessEntry 等。
+
+**对于 ValueReference**，因为 Cache 支持强引用的 Value、SoftReference Value 以及 WeakReference Value，因而它对应三个实现类：StrongValueReference、SoftValueReference、WeakValueReference。为了支持动态加载机制，它还有一个 LoadingValueReference，在需要动态加载一个 key 的值时，先把该值封装在 LoadingValueReference 中，以表达该 key 对应的值已经在加载了，如果其他线程也要查询该 key 对应的值，就能得到该引用，并且等待改值加载完成，从而保证该值只被加载一次，在该值加载完成后，将 LoadingValueReference 替换成其他 ValueReference 类型。ValueReference 对象中会保留对 ReferenceEntry 的引用，这是因为在 Value 因为 WeakReference、SoftReference 被回收时，需要使用其 key 将对应的项从 Segment 的 table 中移除。
+
+**WriteQueue 和 AccessQueue ：**为了实现最近最少使用算法，Guava Cache 在 Segment 中添加了两条链：write 链（writeQueue）和 access 链（accessQueue），这两条链都是一个双向链表，通过 ReferenceEntry 中的 previousInWriteQueue、nextInWriteQueue 和 previousInAccessQueue、nextInAccessQueue 链接而成，但是以 Queue 的形式表达。WriteQueue 和 AccessQueue 都是自定义了 offer、add（直接调用 offer）、remove、poll 等操作的逻辑，对 offer（add）操作，如果是新加的节点，则直接加入到该链的结尾，如果是已存在的节点，则将该节点链接的链尾；对 remove 操作，直接从该链中移除该节点；对 poll 操作，将头节点的下一个节点移除，并返回。
+
+**了解了 cache 的整体数据结构后，再来看下针对缓存的相关操作就简单多了：**
+
+*   Segment 中的 evict 清除策略操作，是在每一次调用操作的开始和结束时触发清理工作，这样比一般的缓存另起线程监控清理相比，可以减少开销，但如果长时间没有调用方法的话，会导致不能及时的清理释放内存空间的问题。evict 主要处理四个 Queue：1\. keyReferenceQueue；2\. valueReferenceQueue；3\. writeQueue；4\. accessQueue。前两个 queue 是因为 WeakReference、SoftReference 被垃圾回收时加入的，清理时只需要遍历整个 queue，将对应的项从 LocalCache 中移除即可，这里 keyReferenceQueue 存放 ReferenceEntry，而 valueReferenceQueue 存放的是 ValueReference，要从 Cache 中移除需要有 key，因而 ValueReference 需要有对 ReferenceEntry 的引用，这个前面也提到过了。而对后面两个 Queue，只需要检查是否配置了相应的 expire 时间，然后从头开始查找已经 expire 的 Entry，将它们移除即可。
+*   Segment 中的 put 操作：put 操作相对比较简单，首先它需要获得锁，然后尝试做一些清理工作，接下来的逻辑类似 ConcurrentHashMap 中的 rehash，查找位置并注入数据。需要说明的是当找到一个已存在的 Entry 时，需要先判断当前的 ValueRefernece 中的值事实上已经被回收了，因为它们可以是 WeakReference、SoftReference 类型，如果已经被回收了，则将新值写入。并且在每次更新时注册当前操作引起的移除事件，指定相应的原因：COLLECTED、REPLACED 等，这些注册的事件在退出的时候统一调用 Cache 注册的 RemovalListener，由于事件处理可能会有很长时间，因而这里将事件处理的逻辑在退出锁以后才做。最后，在更新已存在的 Entry 结束后都尝试着将那些已经 expire 的 Entry 移除。另外 put 操作中还需要更新 writeQueue 和 accessQueue 的语义正确性。
+*   Segment 带 CacheLoader 的 get 操作：1\. 先查找 table 中是否已存在没有被回收、也没有 expire 的 entry，如果找到，并在 CacheBuilder 中配置了 refreshAfterWrite，并且当前时间间隔已经操作这个事件，则重新加载值，否则，直接返回原有的值；2\. 如果查找到的 ValueReference 是 LoadingValueReference，则等待该 LoadingValueReference 加载结束，并返回加载的值；3\. 如果没有找到 entry，或者找到的 entry 的值为 null，则加锁后，继续在 table 中查找已存在 key 对应的 entry，如果找到并且对应的 entry.isLoading() 为 true，则表示有另一个线程正在加载，因而等待那个线程加载完成，如果找到一个非 null 值，返回该值，否则创建一个 LoadingValueReference，并调用 loadSync 加载相应的值，在加载完成后，将新加载的值更新到 table 中，即大部分情况下替换原来的 LoadingValueReference。
+
+Guava Cache 提供 Builder 模式的 CacheBuilder 生成器来创建缓存的方式，十分方便，并且各个缓存参数的配置设置，类似于函数式编程的写法，可自行设置各类参数选型。它提供三种方式加载到缓存中。分别是：
+
+1.  在构建缓存的时候，使用 build 方法内部调用 CacheLoader 方法加载数据；
+2.  callable 、callback 方式加载数据；
+3.  使用粗暴直接的方式，直接 Cache.put 加载数据，但自动加载是首选的，因为它可以更容易的推断所有缓存内容的一致性。
+
+build 生成器的两种方式都实现了一种逻辑：从缓存中取 key 的值，如果该值已经缓存过了则返回缓存中的值，如果没有缓存过可以通过某个方法来获取这个值，不同的地方在于 cacheloader 的定义比较宽泛，是针对整个 cache 定义的，可以认为是统一的根据 key 值 load value 的方法，而 callable 的方式较为灵活，允许你在 get 的时候指定 load 方法。使用示例如下：
+
+```
+   /**
+    * CacheLoader
+   */
+   public void loadingCache()
+   {
+     LoadingCache<String, String> graphs =CacheBuilder.newBuilder()
+        .maximumSize(1000).build(new CacheLoader<String, String>()
+        {
+            @Override
+            public String load(String key) throws Exception
+            {
+                System.out.println("key:"+key);
+                if("key".equals(key)){
+                    return "key return result";
+                }else{
+                    return "get-if-absent-compute";
+                }                   
+            }
+        });
+   String resultVal = null;
+   try {
+       resultVal = graphs.get("key");
+       } catch (ExecutionException e) {
+         e.printStackTrace();
+      }
+
+    System.out.println(resultVal);
+   }
+
+   /**
+    *
+    * Callable
+   */
+   public void callablex() throws ExecutionException
+    {
+      Cache<String, String> cache = CacheBuilder.newBuilder()
+        .maximumSize(1000).build();
+      String result = cache.get("key", new Callable<String>()
+       {
+         public String call()
+         {
+          return "result";
+         }
+       });
+     System.out.println(result);
+    }
+
+```
+
+> **总体来看，Guava Cache 基于 ConcurrentHashMap 的优秀设计借鉴，在高并发场景支持和线程安全上都有相应的改进策略，使用 Reference 引用命令，提升高并发下的数据…… 访问速度并保持了 GC 的可回收，有效节省空间；同时，write 链和 access 链的设计，能更灵活、高效的实现多种类型的缓存清理策略，包括基于容量的清理、基于时间的清理、基于引用的清理等；编程式的 build 生成器管理，让使用者有更多的自由度，能够根据不同场景设置合适的模式。**
+
+## 分布式缓存
+
+### memcached 缓存
+
+memcached 是应用较广的开源分布式缓存产品之一，它本身其实不提供分布式解决方案。在服务端，memcached 集群环境实际就是一个个 memcached 服务器的堆积，环境搭建较为简单；cache 的分布式主要是在客户端实现，通过客户端的路由处理来达到分布式解决方案的目的。客户端做路由的原理非常简单，应用服务器在每次存取某 key 的 value 时，通过某种算法把 key 映射到某台 memcached 服务器 nodeA 上，因此这个 key 所有操作都在 nodeA 上，结构图如图 6、图 7 所示。
+
+![](https://tech.meituan.com/img/cache_about/memcached%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%B7%AF%E7%94%B1%E5%9B%BE.png)
+
+图 6 memcached 客户端路由图
+
+![](https://tech.meituan.com/img/cache_about/memcached%E4%B8%80%E8%87%B4%E6%80%A7hash%E7%A4%BA%E4%BE%8B%E5%9B%BE.png)
+
+图 7 memcached 一致性 hash 示例图
+
+memcached 客户端采用一致性 hash 算法作为路由策略，如图 7，相对于一般 hash（如简单取模）的算法，一致性 hash 算法除了计算 key 的 hash 值外，还会计算每个 server 对应的 hash 值，然后将这些 hash 值映射到一个有限的值域上（比如 0~2^32）。通过寻找 hash 值大于 hash(key) 的最小 server 作为存储该 key 数据的目标 server。如果找不到，则直接把具有最小 hash 值的 server 作为目标 server。同时，一定程度上，解决了扩容问题，增加或删除单个节点，对于整个集群来说，不会有大的影响。最近版本，增加了虚拟节点的设计，进一步提升了可用性。
+
+memcached 是一个高效的分布式内存 cache，了解 memcached 的内存管理机制，才能更好的掌握 memcached，让我们可以针对我们数据特点进行调优，让其更好的为我所用。我们知道 memcached 仅支持基础的 key-value 键值对类型数据存储。在 memcached 内存结构中有两个非常重要的概念：slab 和 chunk。如图 8 所示。
+
+![](https://tech.meituan.com/img/cache_about/memcached%E5%86%85%E5%AD%98%E7%BB%93%E6%9E%84%E5%9B%BE.png)
+
+图 8 memcached 内存结构图
+
+slab 是一个内存块，它是 memcached 一次申请内存的最小单位。在启动 memcached 的时候一般会使用参数 - m 指定其可用内存，但是并不是在启动的那一刻所有的内存就全部分配出去了，只有在需要的时候才会去申请，而且每次申请一定是一个 slab。Slab 的大小固定为 1M（1048576 Byte），一个 slab 由若干个大小相等的 chunk 组成。每个 chunk 中都保存了一个 item 结构体、一对 key 和 value。
+
+虽然在同一个 slab 中 chunk 的大小相等的，但是在不同的 slab 中 chunk 的大小并不一定相等，在 memcached 中按照 chunk 的大小不同，可以把 slab 分为很多种类（class），默认情况下 memcached 把 slab 分为 40 类（class1～class40），在 class 1 中，chunk 的大小为 80 字节，由于一个 slab 的大小是固定的 1048576 字节（1M），因此在 class1 中最多可以有 13107 个 chunk（也就是这个 slab 能存最多 13107 个小于 80 字节的 key-value 数据）。
+
+memcached 内存管理采取预分配、分组管理的方式，分组管理就是我们上面提到的 slab class，按照 chunk 的大小 slab 被分为很多种类。内存预分配过程是怎样的呢？向 memcached 添加一个 item 时候，memcached 首先会根据 item 的大小，来选择最合适的 slab class：例如 item 的大小为 190 字节，默认情况下 class 4 的 chunk 大小为 160 字节显然不合适，class 5 的 chunk 大小为 200 字节，大于 190 字节，因此该 item 将放在 class 5 中（显然这里会有 10 字节的浪费是不可避免的），计算好所要放入的 chunk 之后，memcached 会去检查该类大小的 chunk 还有没有空闲的，如果没有，将会申请 1M（1 个 slab）的空间并划分为该种类 chunk。例如我们第一次向 memcached 中放入一个 190 字节的 item 时，memcached 会产生一个 slab class 2（也叫一个 page），并会用去一个 chunk，剩余 5241 个 chunk 供下次有适合大小 item 时使用，当我们用完这所有的 5242 个 chunk 之后，下次再有一个在 160～200 字节之间的 item 添加进来时，memcached 会再次产生一个 class 5 的 slab（这样就存在了 2 个 pages）。
+
+**总结来看，memcached 内存管理需要注意的几个方面：**
+
+*   chunk 是在 page 里面划分的，而 page 固定为 1m，所以 chunk 最大不能超过 1m。
+*   chunk 实际占用内存要加 48B，因为 chunk 数据结构本身需要占用 48B。
+*   如果用户数据大于 1m，则 memcached 会将其切割，放到多个 chunk 内。
+*   已分配出去的 page 不能回收。
+
+> **对于 key-value 信息，最好不要超过 1m 的大小；同时信息长度最好相对是比较均衡稳定的，这样能够保障最大限度的使用内存；同时，memcached 采用的 LRU 清理策略，合理甚至过期时间，提高命中率。**
+
+无特殊场景下，key-value 能满足需求的前提下，使用 memcached 分布式集群是较好的选择，搭建与操作使用都比较简单；分布式集群在单点故障时，只影响小部分数据异常，目前还可以通过 Magent 缓存代理模式，做单点备份，提升高可用；整个缓存都是基于内存的，因此响应时间是很快，不需要额外的序列化、反序列化的程序，但同时由于基于内存，数据没有持久化，集群故障重启数据无法恢复。高版本的 memcached 已经支持 CAS 模式的原子操作，可以低成本的解决并发控制问题。
+
+### Redis 缓存
+
+Redis 是一个远程内存数据库（非关系型数据库），性能强劲，具有复制特性以及解决问题而生的独一无二的数据模型。它可以存储键值对与 5 种不同类型的值之间的映射，可以将存储在内存的键值对数据持久化到硬盘，可以使用复制特性来扩展读性能，还可以使用客户端分片来扩展写性能。
+
+![](https://tech.meituan.com/img/cache_about/redis%E6%95%B0%E6%8D%AE%E6%A8%A1%E5%9E%8B%E5%9B%BE.png)
+
+图 9 Redis 数据模型图
+
+如图 9，Redis 内部使用一个 redisObject 对象来标识所有的 key 和 value 数据，redisObject 最主要的信息如图所示：type 代表一个 value 对象具体是何种数据类型，encoding 是不同数据类型在 Redis 内部的存储方式，比如——type=string 代表 value 存储的是一个普通字符串，那么对应的 encoding 可以是 raw 或是 int，如果是 int 则代表世界 Redis 内部是按数值类型存储和表示这个字符串。
+
+图 9 左边的 raw 列为对象的编码方式：字符串可以被编码为 raw（一般字符串）或 Rint（为了节约内存，Redis 会将字符串表示的 64 位有符号整数编码为整数来进行储存）；列表可以被编码为 ziplist 或 linkedlist，ziplist 是为节约大小较小的列表空间而作的特殊表示；集合可以被编码为 intset 或者 hashtable，intset 是只储存数字的小集合的特殊表示；hash 表可以编码为 zipmap 或者 hashtable，zipmap 是小 hash 表的特殊表示；有序集合可以被编码为 ziplist 或者 skiplist 格式，ziplist 用于表示小的有序集合，而 skiplist 则用于表示任何大小的有序集合。
+
+从网络 I/O 模型上看，Redis 使用单线程的 I/O 复用模型，自己封装了一个简单的 AeEvent 事件处理框架，主要实现了 epoll、kqueue 和 select。对于单纯只有 I/O 操作来说，单线程可以将速度优势发挥到最大，但是 Redis 也提供了一些简单的计算功能，比如排序、聚合等，对于这些操作，单线程模型实际会严重影响整体吞吐量，CPU 计算过程中，整个 I/O 调度都是被阻塞住的，在这些特殊场景的使用中，需要额外的考虑。相较于 memcached 的预分配内存管理，Redis 使用现场申请内存的方式来存储数据，并且很少使用 free-list 等方式来优化内存分配，会在一定程度上存在内存碎片。Redis 跟据存储命令参数，会把带过期时间的数据单独存放在一起，并把它们称为临时数据，非临时数据是永远不会被剔除的，即便物理内存不够，导致 swap 也不会剔除任何非临时数据（但会尝试剔除部分临时数据）。
+
+我们描述 Redis 为内存数据库，作为缓存服务，大量使用内存间的数据快速读写，支持高并发大吞吐；而作为数据库，则是指 Redis 对缓存的持久化支持。Redis 由于支持了非常丰富的内存数据库结构类型，如何把这些复杂的内存组织方式持久化到磁盘上？Redis 的持久化与传统数据库的方式差异较大，Redis 一共支持四种持久化方式，主要使用的两种：
+
+1.  **定时快照方式 (snapshot)：**该持久化方式实际是在 Redis 内部一个定时器事件，每隔固定时间去检查当前数据发生的改变次数与时间是否满足配置的持久化触发的条件，如果满足则通过操作系统 fork 调用来创建出一个子进程，这个子进程默认会与父进程共享相同的地址空间，这时就可以通过子进程来遍历整个内存来进行存储操作，而主进程则仍然可以提供服务，当有写入时由操作系统按照内存页（page）为单位来进行 copy-on-write 保证父子进程之间不会互相影响。它的缺点是快照只是代表一段时间内的内存映像，所以系统重启会丢失上次快照与重启之间所有的数据。
+2.  **基于语句追加文件的方式 (aof)：**aof 方式实际类似 MySQl 的基于语句的 binlog 方式，即每条会使 Redis 内存数据发生改变的命令都会追加到一个 log 文件中，也就是说这个 log 文件就是 Redis 的持久化数据。
+
+> **aof 的方式的主要缺点是追加 log 文件可能导致体积过大，当系统重启恢复数据时如果是 aof 的方式则加载数据会非常慢，几十 G 的数据可能需要几小时才能加载完，当然这个耗时并不是因为磁盘文件读取速度慢，而是由于读取的所有命令都要在内存中执行一遍。另外由于每条命令都要写 log，所以使用 aof 的方式，Redis 的读写性能也会有所下降。**
+
+Redis 的持久化使用了 Buffer I/O，所谓 Buffer I/O 是指 Redis 对持久化文件的写入和读取操作都会使用物理内存的 Page Cache，而大多数数据库系统会使用 Direct I/O 来绕过这层 Page Cache 并自行维护一个数据的 Cache。而当 Redis 的持久化文件过大（尤其是快照文件），并对其进行读写时，磁盘文件中的数据都会被加载到物理内存中作为操作系统对该文件的一层 Cache，而这层 Cache 的数据与 Redis 内存中管理的数据实际是重复存储的。虽然内核在物理内存紧张时会做 Page Cache 的剔除工作，但内核很可能认为某块 Page Cache 更重要，而让你的进程开始 Swap，这时你的系统就会开始出现不稳定或者崩溃了，因此在持久化配置后，针对内存使用需要实时监控观察。
+
+与 memcached 客户端支持分布式方案不同，Redis 更倾向于在服务端构建分布式存储，如图 10、11。
+
+![](https://tech.meituan.com/img/cache_about/redis%E5%88%86%E5%B8%83%E5%BC%8F%E9%9B%86%E7%BE%A4%E5%9B%BE1.png)
+
+图 10 Redis 分布式集群图 1
+
+![](https://tech.meituan.com/img/cache_about/redis%E5%88%86%E5%B8%83%E5%BC%8F%E9%9B%86%E7%BE%A4%E5%9B%BE2.png)
+
+图 11 Redis 分布式集群图 2
+
+Redis Cluster 是一个实现了分布式且允许单点故障的 Redis 高级版本，它没有中心节点，具有线性可伸缩的功能。如图 11，其中节点与节点之间通过二进制协议进行通信，节点与客户端之间通过 ascii 协议进行通信。在数据的放置策略上，Redis Cluster 将整个 key 的数值域分成 4096 个 hash 槽，每个节点上可以存储一个或多个 hash 槽，也就是说当前 Redis Cluster 支持的最大节点数就是 4096。Redis Cluster 使用的分布式算法也很简单：crc16(key) % HASH_SLOTS_NUMBER。整体设计可总结为：
+
+*   数据 hash 分布在不同的 Redis 节点实例上；
+*   M/S 的切换采用 Sentinel；
+*   写：只会写 master Instance，从 sentinel 获取当前的 master Instance；
+*   读：从 Redis Node 中基于权重选取一个 Redis Instance 读取，失败 / 超时则轮询其他 Instance；Redis 本身就很好的支持读写分离，在单进程的 I/O 场景下，可以有效的避免主库的阻塞风险；
+*   通过 RPC 服务访问，RPC server 端封装了 Redis 客户端，客户端基于 Jedis 开发。
+
+可以看到，通过集群 + 主从结合的设计，Redis 在扩展和稳定高可用性能方面都是比较成熟的。但是，在数据一致性问题上，Redis 没有提供 CAS 操作命令来保障高并发场景下的数据一致性问题，不过它却提供了事务的功能，Redis 的 Transactions 提供的并不是严格的 ACID 的事务（比如一串用 EXEC 提交执行的命令，在执行中服务器宕机，那么会有一部分命令执行了，剩下的没执行）。但是这个 Transactions 还是提供了基本的命令打包执行的功能（在服务器不出问题的情况下，可以保证一连串的命令是顺序在一起执行的，中间有会有其它客户端命令插进来执行）。Redis 还提供了一个 Watch 功能，你可以对一个 key 进行 Watch，然后再执行 Transactions，在这过程中，如果这个 Watched 的值进行了修改，那么这个 Transactions 会发现并拒绝执行。在失效策略上，Redis 支持多大 6 种的数据淘汰策略：
+
+1.  volatile-lru：从已设置过期时间的数据集（server.db[i].expires）中挑选最近最少使用的数据淘汰；
+2.  volatile-ttl：从已设置过期时间的数据集（server.db[i].expires）中挑选将要过期的数据淘汰；
+3.  volatile-random：从已设置过期时间的数据集（server.db[i].expires）中任意选择数据淘汰 ；
+4.  allkeys-lru：从数据集（server.db[i].dict）中挑选最近最少使用的数据淘汰；
+5.  allkeys-random：从数据集（server.db[i].dict）中任意选择数据淘汰；
+6.  no-enviction（驱逐）：禁止驱逐数据。
+
+**个人总结了以下多种 Web 应用场景，在这些场景下可以充分的利用 Redis 的特性，大大提高效率。**
+
+*   在主页中显示最新的项目列表：Redis 使用的是常驻内存的缓存，速度非常快。LPUSH 用来插入一个内容 ID，作为关键字存储在列表头部。LTRIM 用来限制列表中的项目数最多为 5000。如果用户需要的检索的数据量超越这个缓存容量，这时才需要把请求发送到数据库。
+*   删除和过滤：如果一篇文章被删除，可以使用 LREM 从缓存中彻底清除掉。
+*   排行榜及相关问题：排行榜（leader board）按照得分进行排序。ZADD 命令可以直接实现这个功能，而 ZREVRANGE 命令可以用来按照得分来获取前 100 名的用户，ZRANK 可以用来获取用户排名，非常直接而且操作容易。
+*   按照用户投票和时间排序：排行榜，得分会随着时间变化。LPUSH 和 LTRIM 命令结合运用，把文章添加到一个列表中。一项后台任务用来获取列表，并重新计算列表的排序，ZADD 命令用来按照新的顺序填充生成列表。列表可以实现非常快速的检索，即使是负载很重的站点。
+*   过期项目处理：使用 Unix 时间作为关键字，用来保持列表能够按时间排序。对 current_time 和 time_to_live 进行检索，完成查找过期项目的艰巨任务。另一项后台任务使用 ZRANGE…WITHSCORES 进行查询，删除过期的条目。
+*   计数：进行各种数据统计的用途是非常广泛的，比如想知道什么时候封锁一个 IP 地址。INCRBY 命令让这些变得很容易，通过原子递增保持计数；GETSET 用来重置计数器；过期属性用来确认一个关键字什么时候应该删除。
+*   特定时间内的特定项目：这是特定访问者的问题，可以通过给每次页面浏览使用 SADD 命令来解决。SADD 不会将已经存在的成员添加到一个集合。
+*   Pub/Sub：在更新中保持用户对数据的映射是系统中的一个普遍任务。Redis 的 pub/sub 功能使用了 SUBSCRIBE、UNSUBSCRIBE 和 PUBLISH 命令，让这个变得更加容易。
+*   队列：在当前的编程中队列随处可见。除了 push 和 pop 类型的命令之外，Redis 还有阻塞队列的命令，能够让一个程序在执行时被另一个程序添加到队列。
+
+## 缓存实战
+
+实际工程中，对于缓存的应用可以有多种的实战方式，包括侵入式硬编码，抽象服务化应用，以及轻量的注解式使用等。本文将主要介绍下注解式方式。
+
+### Spring 注解缓存
+
+Spring 3.1 之后，引入了注解缓存技术，其本质上不是一个具体的缓存实现方案，而是一个对缓存使用的抽象，通过在既有代码中添加少量自定义的各种 annotation，即能够达到使用缓存对象和缓存方法的返回对象的效果。Spring 的缓存技术具备相当的灵活性，不仅能够使用 SpEL（Spring Expression Language）来定义缓存的 key 和各种 condition，还提供开箱即用的缓存临时存储方案，也支持和主流的专业缓存集成。其特点总结如下：
+
+*   少量的配置 annotation 注释即可使得既有代码支持缓存；
+*   支持开箱即用，不用安装和部署额外的第三方组件即可使用缓存；
+*   支持 Spring Express Language（SpEL），能使用对象的任何属性或者方法来定义缓存的 key 和使用规则条件；
+*   支持自定义 key 和自定义缓存管理者，具有相当的灵活性和可扩展性。
+
+和 Spring 的事务管理类似，Spring Cache 的关键原理就是 Spring AOP，通过 Spring AOP 实现了在方法调用前、调用后获取方法的入参和返回值，进而实现了缓存的逻辑。而 Spring Cache 利用了 Spring AOP 的动态代理技术，即当客户端尝试调用 pojo 的 foo() 方法的时候，给它的不是 pojo 自身的引用，而是一个动态生成的代理类。
+
+![](https://tech.meituan.com/img/cache_about/spring%E5%8A%A8%E6%80%81%E4%BB%A3%E7%90%86%E8%B0%83%E7%94%A8%E5%9B%BE.png)
+
+图 12 Spring 动态代理调用图
+
+如图 12 所示，实际客户端获取的是一个代理的引用，在调用 foo() 方法的时候，会首先调用 proxy 的 foo() 方法，这个时候 proxy 可以整体控制实际的 pojo.foo() 方法的入参和返回值，比如缓存结果，比如直接略过执行实际的 foo() 方法等，都是可以轻松做到的。Spring Cache 主要使用三个注释标签，即 @Cacheable、@CachePut 和 @CacheEvict，主要针对方法上注解使用，部分场景也可以直接类上注解使用，当在类上使用时，该类所有方法都将受影响。我们总结一下其作用和配置方法，如表 1 所示。
+
+表 1
+
+| 标签类型 | 作用 | 主要配置参数说明 |
+| --- | --- | --- |
+| @Cacheable | 主要针对方法配置，能够根据方法的请求参数对其结果进行缓存 | **value：**缓存的名称，在 Spring 配置文件中定义，必须指定至少一个； **key：**缓存的 key，可以为空，如果指定要按照 SpEL 表达式编写，如果不指定，则默认按照方法的所有参数进行组合； **condition：**缓存的条件，可以为空，使用 SpEL 编写，返回 true 或者 false，只有为 true 才进行缓存 |
+| @CachePut | 主要针对方法配置，能够根据方法的请求参数对其结果进行缓存，和 @Cacheable 不同的是，它每次都会触发真实方法的调用 | **value：**缓存的名称，在 spring 配置文件中定义，必须指定至少一个; **key：**缓存的 key，可以为空，如果指定要按照 SpEL 表达式编写，如果不指定，则默认按照方法的所有参数进行组合； **condition：**缓存的条件，可以为空，使用 SpEL 编写，返回 true 或者 false，只有为 true 才进行缓存 |
+| @CacheEvict | 主要针对方法配置，能够根据一定的条件对缓存进行清空 | **value：**缓存的名称，在 Spring 配置文件中定义，必须指定至少一个； **key：**缓存的 key，可以为空，如果指定要按照 SpEL 表达式编写，如果不指定，则默认按照方法的所有参数进行组合； **condition：**缓存的条件，可以为空，使用 SpEL 编写，返回 true 或者 false，只有为 true 才进行缓存； **allEntries：**是否清空所有缓存内容，默认为 false，如果指定为 true，则方法调用后将立即清空所有缓存； **beforeInvocation：**是否在方法执行前就清空，默认为 false，如果指定为 true，则在方法还没有执行的时候就清空缓存，默认情况下，如果方法执行抛出异常，则不会清空缓存 |
+
+可扩展支持：Spring 注解 cache 能够满足一般应用对缓存的需求，但随着应用服务的复杂化，大并发高可用性能要求下，需要进行一定的扩展，这时对其自身集成的缓存方案可能不太适用，该怎么办？Spring 预先有考虑到这点，那么怎样利用 Spring 提供的扩展点实现我们自己的缓存，且在不改变原来已有代码的情况下进行扩展？是否在方法执行前就清空，默认为 false，如果指定为 true，则在方法还没有执行的时候就清空缓存，默认情况下，如果方法执行抛出异常，则不会清空缓存。
+
+> **这基本能够满足一般应用对缓存的需求，但现实总是很复杂，当你的用户量上去或者性能跟不上，总需要进行扩展，这个时候你或许对其提供的内存缓存不满意了，因为其不支持高可用性，也不具备持久化数据能力，这个时候，你就需要自定义你的缓存方案了，还好，Spring 也想到了这一点。**
+
+我们先不考虑如何持久化缓存，毕竟这种第三方的实现方案很多，我们要考虑的是，怎么利用 Spring 提供的扩展点实现我们自己的缓存，且在不改原来已有代码的情况下进行扩展。这需要简单的三步骤，首先需要提供一个 CacheManager 接口的实现（继承至 AbstractCacheManager），管理自身的 cache 实例；其次，实现自己的 cache 实例 MyCache(继承至 Cache)，在这里面引入我们需要的第三方 cache 或自定义 cache；最后就是对配置项进行声明，将 MyCache 实例注入 CacheManager 进行统一管理。
+
+### 酒店商家端自定义注解缓存
+
+注解缓存的使用，可以有效增强应用代码的可读性，同时统一管理缓存，提供较好的可扩展性，为此，酒店商家端在 Spring 注解缓存基础上，自定义了适合自身业务特性的注解缓存。
+
+主要使用两个标签，即 @HotelCacheable、@HotelCacheEvict，其作用和配置方法见表 2。
+
+表 2
+
+| 标签类型 | 作用 | 主要配置参数说明 |
+| --- | --- | --- |
+| @HotelCacheable | 主要针对方法配置，能够根据方法的请求参数对其结果进行缓存 | **domain：**作用域，针对集合场景，解决批量更新问题； **domainKey：**作用域对应的缓存 key； **key：**缓存对象 key 前缀； **fieldKey：**缓存对象 key，与前缀合并生成对象 key； **condition：**缓存获取前置条件，支持 spel 语法； **cacheCondition：**缓存刷入前置条件，支持 spel 语法； **expireTime：**超时时间设置 |
+| @HotelCacheEvict | 主要针对方法配置，能够根据一定的条件对缓存进行清空 | **同上** |
+
+增加作用域的概念，解决商家信息变更下，多重重要信息实时更新的问题。
+
+![](https://tech.meituan.com/img/cache_about/%E5%9F%9F%E7%BC%93%E5%AD%98%E5%A4%84%E7%90%86%E5%9B%BE.png)
+
+图 13 域缓存处理图
+
+如图 13，按旧的方案，当 cache0 发送变化时，为了保持信息的实时更新，需要手动删除 cache1、cache2、cache3 等相关处的缓存数据。增加域缓存概念，cache0、cache1、cache2、cache3 是以账号 ID 为基础，相互存在影响约束的集合体，我们作为一个域集合，增加域缓存处理，当 cache0 发送变化时，整体的账号 ID domain 域已发生更新，自动影响 cache1、cache2、cache3 等处的缓存数据。将相关联逻辑缓存统一化，有效提升代码可读性，同时更好服务业务，账号重点信息能够实时变更刷新，相关服务响应速度提升。
+
+另外，增加了 cacheCondition 缓存刷入前置判断，有效解决商家业务多重外部依赖场景下，业务降级有损服务下，业务数据一致性保证，不因为缓存的增加影响业务的准确性；自定义 CacheManager 缓存管理器，可以有效兼容公共基础组件 Medis、Cellar 相关服务，在对应用程序不做改动的情况下，有效切换缓存方式；同时，统一的缓存服务 AOP 入口，结合接入 Mtconfig 统一配置管理，对应用内缓存做好降级准备，一键关闭缓存。几点建议：
+
+*   上面介绍过 Spring Cache 的原理是基于动态生成的 proxy 代理机制来进行切面处理，关键点是对象的引用问题，如果对象的方法是类里面的内部调用（this 引用）而不是外部引用的场景下，会导致 proxy 失败，那么我们所做的缓存切面处理也就失效了。因此，应避免已注解缓存的方法在类里面的内部调用。
+*   使用的 key 约束，缓存的 key 应尽量使用简单的可区别的元素，如 ID、名称等，不能使用 list 等容器的值，或者使用整体 model 对象的值。非 public 方法无法使用注解缓存实现。
+
+> **总之，注释驱动的 Spring Cache 能够极大的减少我们编写常见缓存的代码量，通过少量的注释标签和配置文件，即可达到使代码具备缓存的能力，且具备很好的灵活性和扩展性。但是我们也应该看到，Spring Cache 由于基于 Spring AOP 技术，尤其是动态的 proxy 技术，导致其不能很好的支持方法的内部调用或者非 public 方法的缓存设置，当然这些都是可以解决的问题。**
+
+## 作者简介
+
+明辉，美团酒旅事业群酒店住宿研发团队 B 端商家业务平台负责人，主导构建商家业务平台系统，支撑美团酒店住宿业务的飞速发展需求。曾任职于联想集团、百度。
+

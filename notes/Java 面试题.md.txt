@@ -1,0 +1,431 @@
+# goto
+
+> The keywords const and goto are reserved, even though they are not currently used.
+
+如果不把 goto 设为保留字，那么标识符就可以为 goto，如果以后 Java 实现用到了 goto，那么这些代码就全部不能使用。将 goto 设为保留字，标识符就不能命名为 goto，编译不会通过。
+
+[Is there a goto statement in Java?](https://stackoverflow.com/questions/2545103/is-there-a-goto-statement-in-java)
+
+# & 与 &&
+
+& 是位与运算符，例如
+
+```java
+int x = 3, y = 2;   // 11b 10b
+int z = x & y;      // 10b -> 2
+```
+
+操作数也可以为 boolean 类型
+
+```java
+boolean a = true, b = false;
+boolean c = a & b; // false
+```
+
+&& 是逻辑与运算符，操作数只能是 boolean 类型
+
+```java
+boolean d = a && b; // false;
+```
+
+当 & 和 && 都用在 boolean 类型时，最大的不同在于 && 的短路操作，也就是第一个 boolean 为 false 的时候就不会去执行第二个语句：
+
+```java
+String s = null;
+boolean b1 = s != null & s.equals("abc");
+boolean b2 = s != null && s.equals("abc");
+```
+
+例如上面使用 & 的语句会抛出 NullPointerException，这是因为 & 没有短路操作，两边的语句都会去执行。
+
+# Math.round()
+
+一个数 a 四舍五入转换为 a + 0.5 然后向下取整。
+
+```java
+float x = Math.round(11.5); // 12.0f
+float y = Math.round(-11.5); // -11.0f
+```
+
+# length()
+
+数组没有 length() 方法，但是有 length 属性。
+
+```java
+int[] arr = {1, 2, 3};
+int arrLen = arr.length;
+String str = "123";
+int strLen = str.length();
+```
+
+# 跳出多层循环
+
+使用带标签的 break，但是这和 goto 有点像，应当尽量避免使用。
+
+```java
+A:
+while (true) {
+    while (true) {
+        break A;
+    }
+}
+```
+
+# 构造器是否能被重写
+
+不能被重写，但是可以重载。
+
+# equals() 与 hashCode()
+
+hashCode() 规定，equals() 相同的两个对象必须满足 hashCode() 也相同，但是反过来不成立。
+
+当然在实现的时候可以令 equals() 相同的两个对象 hashCode() 不相同，但是这违反了 hashCode() 的规定。
+
+# 是否可以继承 String 类
+
+String 声明为 final，不可变继承。
+
+# 何时使用静态方法
+
+- If you are writing utility classes and they are not supposed to be changed.
+- If the method is not using any instance variable.
+- If any operation is not dependent on instance creation.
+- If there is some code that can easily be shared by all the instance methods, extract that code into a static method.
+- If you are sure that the definition of the method will never be changed or overridden. As static methods can not be overridden.
+
+[Java: when to use static methods](https://stackoverflow.com/questions/2671496/java-when-to-use-static-methods)
+
+# 静态内部类
+
+非静态内部类的实例化要依赖于外部类对象
+
+```java
+public class OuterClass {
+    class InnerClass {
+    }
+
+    static class StaticInnerClass {
+    }
+
+    public static void main(String[] args) {
+        // InnerClass innerClass = new InnerClass(); // 'OuterClass.this' cannot be referenced from a static context
+        OuterClass outerClass = new OuterClass();
+        InnerClass innerClass = outerClass.new InnerClass();
+        StaticInnerClass staticInnerClass = new StaticInnerClass();
+    }
+}
+```
+
+# 抽象方法
+
+抽象方法需要子类重写，而静态的方法是无法被重写的，因此抽象方法不能是静态方法。
+
+本地方法是由本地代码（如 C 代码）实现的方法，而抽象方法是没有实现的，因此抽象方法也不能是本地方法。
+
+synchronized 和方法的实现细节有关，抽象方法不涉及实现细节，因此抽象方法不能被 synchronized 修饰。
+
+# 静态变量与实例变量
+
+静态变量是被 static 修饰符修饰的变量，也称为类变量，它属于类，不属于类的任何一个对象，一个类不管创建多少个对象，静态变量在内存中有且仅有一个拷贝。静态变量可以实现让多个对象共享内存。
+
+实例变量必须依存于某一实例，需要先创建对象然后通过对象才能访问到它。
+
+# 静态方法调用非静态方法
+
+不可以，静态方法只能访问静态成员，因为非静态方法的调用要先创建对象，在调用静态方法时可能对象并没有被初始化。
+
+# 序列化方式深拷贝
+
+```java
+public class SerializableClone {
+
+    public static <T extends Serializable> T clone(T obj) throws Exception {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bout);
+        oos.writeObject(obj);
+
+        ByteArrayInputStream bin = new ByteArrayInputStream(bout.toByteArray());
+        ObjectInputStream ois = new ObjectInputStream(bin);
+        return (T) ois.readObject();
+
+        // 说明：调用 ByteArrayInputStream 或 ByteArrayOutputStream 对象的 close 方法没有任何意义
+        // 这两个基于内存的流只要垃圾回收器清理对象就能够释放资源，这一点不同于对外部资源（如文件流）的释放
+    }
+
+    private static class A implements Serializable {
+        String name;
+    }
+
+    public static void main(String[] args) {
+        A a1 = new A();
+        a1.name = "123";
+        try {
+            A a2 = SerializableClone.clone(a1);
+            a2.name = "456";
+            System.out.println(a1.name);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+```html
+123
+```
+
+# .java 文件
+
+一个 .java 文件可以包含多个类，但是只能有一个 public 类。
+
+# 匿名内部类继承
+
+继承其他类或实现其他接口，在 Swing 编程和 Android 开发中常用此方式来实现事件监听和回调。
+
+# 内部类引用
+
+一个内部类对象可以访问创建它的外部类对象的成员，包括私有成员。
+
+# 基本类型与字符串类型转换
+
+```java
+int x = Integer.valueOf("5");
+int y = Integer.parseInt("101", 2); // 5
+String z = 5 + "";
+String k = String.valueOf(5);
+```
+
+# 字符串编码
+
+将编码为 GB2312 的字符串转换为 ISO-8859-1。
+
+```java
+String s1 = "你好";
+String s2 = new String(s1.getBytes("GB2312"), "ISO-8859-1");
+```
+
+# Java 与 JavaScript
+
+Java 和 JavaScript 最重要的区别是一个是静态语言，一个是动态语言。目前的编程语言的发展趋势是函数式语言和动态语言。在 Java 中类（class）是一等公民，而 JavaScript 中函数（function）是一等公民，因此 JavaScript 支持函数式编程，可以使用 Lambda 函数和闭包（closure），当然 Java 8 也开始支持函数式编程，提供了对 Lambda 表达式以及函数式接口的支持。
+
+# 断言
+
+```java
+int x = 1;
+int y = 2;
+assert x < 1;
+```
+
+可以在开发和测试过程中打开断言，在发布的时候禁用。
+
+断言不应该代替异常的检查功能。
+
+使用虚拟机参数 -ea 和 -dea 来启动或者关闭断言；对于系统类则是使用 -esa 和 -dsa。
+
+# try 中的 return
+
+return 之前还会执行 finally 中的语句。
+
+在 finally 中改变返回值会造成程序混乱，可以通过提升编译级别来阻止这种事情的发生。
+
+```java
+try {
+    return;
+} finally {
+    System.out.println("a");
+}
+```
+
+# throw 和 throws
+
+throw 用来抛出异常，而 throws 用来声明方法可能抛出的异常，throws 可以无病呻吟，也就声明不可能抛出的异常。
+
+# 异常实践
+
+- 不要将异常处理用于正常的控制流（设计良好的 API 不应该强迫它的调用者为了正常的控制流而使用异常）
+- 对可以恢复的情况使用受检异常，对编程错误使用运行时异常
+- 避免不必要的使用受检异常（可以通过一些状态检测手段来避免异常的发生）
+- 优先使用标准的异常
+- 每个方法抛出的异常都要有文档
+- 保持异常的原子性
+- 不要在 catch 中忽略掉捕获到的异常
+
+# 异常继承
+
+```java
+public class ExceptionExample {
+    private static class ExceptionA extends Exception {
+
+    }
+
+    private static class ExceptionB extends ExceptionA {
+
+    }
+
+    public static void main(String[] args) {
+        try {
+            throw new ExceptionB();
+        } catch (ExceptionA a) {
+            System.out.println("ExceptionA");
+        } catch (Exception e) {
+            System.out.println("Exception");
+        }
+    }
+}
+```
+
+```html
+ExceptionA
+```
+
+# 获得一个 Class 对象
+
+- 类型. class，例如：String.class
+- 对象. getClass()，例如："hello".getClass()
+- Class.forName()，例如：Class.forName("java.lang.String")
+
+# 通过反射实例化一个对象
+
+- 通过类对象调用 newInstance() 方法，例如：String.class.newInstance()
+- 通过类对象的 getConstructor() 或 getDeclaredConstructor() 方法获得构造器（Constructor）对象并调用其 newInstance() 方法创建对象，例如：String.class.getConstructor(String.class).newInstance("Hello");
+
+# 通过反射设置一个对象私有字段的值
+
+可以通过类对象的 getDeclaredField() 方法字段（Field）对象，然后再通过字段对象的 setAccessible(true) 将其设置为可以访问，接下来就可以通过 get/set 方法来获取 / 设置字段的值了。
+
+```java
+public class PrivateFieldSetter {
+
+    public static void main(String[] args) {
+        A a = new A();
+        try {
+            Field field = A.class.getDeclaredField("x");
+            field.setAccessible(true);
+            field.set(a, 2);
+            a.showX();
+        } catch (NoSuchFieldException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+class A {
+    private int x = 1;
+
+    void showX() {
+        System.out.println(x);
+    }
+}
+```
+
+# 内存泄露
+
+JVM 有自动垃圾回收机制，按道理来说不会产生内存泄露。但是有一些被引用但是已经不再使用的对象，垃圾收集器不会去清理这些垃圾，从而导致内存泄露。
+
+例如 Hibernate 的 Session（一级缓存）中的对象属于持久态，垃圾回收器是不会回收这些对象的，然而这些对象中可能存在无用的垃圾对象，如果不及时关闭（close）或清空（flush）一级缓存就可能导致内存泄露。
+
+再比如下面的栈实现，pop() 方法存在内存泄露，因为栈内部维护着弹出对象的引用，它们不会被垃圾收集器回收。
+
+```java
+public class MyStack<T> {
+    private T[] elements;
+    private int size = 0;
+
+    private static final int INIT_CAPACITY = 16;
+
+    public MyStack() {
+        elements = (T[]) new Object[INIT_CAPACITY];
+    }
+
+    public void push(T elem) {
+        ensureCapacity();
+        elements[size++] = elem;
+    }
+
+    public T pop() {
+        if (size == 0)
+            throw new EmptyStackException();
+        return elements[--size];
+    }
+
+    private void ensureCapacity() {
+        if (elements.length == size) {
+            elements = Arrays.copyOf(elements, 2 * size + 1);
+        }
+    }
+}
+```
+
+# Collection 与 Collections
+
+Collection 是一个接口，它是 Set、List 等容器的父接口；Collections 是个一个工具类，提供了一系列的静态方法来辅助容器操作，这些方法包括对容器的搜索、排序、线程安全化等等。
+
+# ArrayList sublist()
+
+如果发生结构性修改的是返回的子 list，那么原来的 list 的大小也会发生变化；
+
+而如果发生结构性修改的是原来的 list（不包括由于返回的子 list 导致的改变），那么返回的子 list 语义上将会是 undefined。在 AbstractList（ArrayList 的父类）中，undefined 的具体表现形式是抛出一个 ConcurrentModificationException。
+
+因此，如果你在调用了 sublist 返回了子 list 之后，如果修改了原 list 的大小，那么之前产生的子 list 将会失效，变得不可使用。
+
+tips: 如何删除一个 list 的某个区段，比如删除 list 的第 2-5 个元素？
+
+可以利用 sublist 的幕后还是原来的 list 的这个特性，比如
+
+```
+list.subList(from, to).clear();
+```
+
+这样就可以了。
+
+[ArrayList 的 sublist(); 方法的陷阱](https://blog.csdn.net/leisurelen/article/details/51174614)
+
+# run() 与 start()
+
+启动线程调用 start() 方法，从而使线程进入可运行状态，JVM 调度线程之后会回调线程的 run() 方法。
+
+# sleep() 与 yield()
+
+- sleep() 方法给其他线程运行机会时不考虑线程的优先级，因此会给低优先级的线程以运行的机会；yield() 方法只会给相同优先级或更高优先级的线程以运行的机会；
+- 线程执行 sleep() 方法后转入阻塞（blocked）状态，而执行 yield() 方法后转入就绪（ready）状态；
+- sleep() 方法声明抛出 InterruptedException，而 yield() 方法没有声明任何异常；
+- sleep() 方法比 yield() 方法（跟操作系统 CPU 调度相关）具有更好的可移植性。
+
+# synchronized
+
+当一个线程进入一个对象的 synchronized 方法 A 之后，其它线程是否可进入此对象的 synchronized 方法 B？
+
+不能。其它线程只能访问该对象的非同步方法，同步方法则不能进入。因为非静态方法上的 synchronized 修饰符要求执行方法时要获得对象的锁，如果已经进入 A 方法说明对象锁已经被取走，那么试图进入 B 方法的线程就只能在等锁池（注意不是等待池哦）中等待对象的锁。
+
+# 可重入内置锁
+
+每个 Java 对象都可以用做一个实现同步的锁，这些锁被称为内置锁或监视器锁。线程在进入同步代码块之前会自动获取锁，并且在退出同步代码块时会自动释放锁。获得内置锁的唯一途径就是进入由这个锁保护的同步代码块或方法。
+
+当某个线程请求一个由其他线程持有的锁时，发出请求的线程就会阻塞。然而，由于内置锁是可重入的，因此如果某个线程试图获得一个已经由它自己持有的锁，那么这个请求就会成功。“重入”意味着获取锁的操作的粒度是“线程”，而不是调用。重入的一种实现方法是，为每个锁关联一个获取计数值和一个所有者线程。
+
+重入进一步提升了加锁行为的封装性，因此简化了面向对象并发代码的开发。分析如下程序：
+
+```java
+public class Father
+{
+    public synchronized void doSomething(){
+        ......
+    }
+}
+
+public class Child extends Father
+{
+    public synchronized void doSomething(){
+        ......
+        super.doSomething();
+    }
+}
+```
+
+子类覆写了父类的同步方法，然后调用父类中的方法，此时如果没有可重入的锁，那么这段代码件产生死锁。
+
+由于 Father 和 Child 中的 doSomething() 方法都是 synchronized 方法，因此每个 doSomething() 方法在执行前都会获取 Child 对象实例上的锁。如果内置锁不是可重入的，那么在调用 super.doSomething() 时将无法获得该 Child 对象上的互斥锁，因为这个锁已经被持有，从而线程会永远阻塞下去，一直在等待一个永远也无法获取的锁。重入则避免了这种死锁情况的发生。
+
+同一个线程在调用本类中其他 synchronized 方法/块或父类中的 synchronized 方法/块时，都不会阻碍该线程地执行，因为互斥锁是可重入的。

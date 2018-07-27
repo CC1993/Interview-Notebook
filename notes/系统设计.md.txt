@@ -1,0 +1,1730 @@
+# 解决思路
+
+面向对象设计问题要求求职者设计出类和方法，以实现技术问题或描述真实生活中的对象。可以按照以下步骤来进行解决：
+
+## 处理不明确的地方
+
+面向对象设计问题往往会故意放些烟幕弹，意在检验你是武断臆测，还是提出问题以厘清问题。毕竟，开发人员要是没弄清楚自己要开发什么，就直接挽起袖子开始编码，只会浪费公司的财力物力，还可能造成更严重的后果。
+
+碰到面向对象设计问题时，你应该先问清楚，谁是使用者、他们将如何使用。对某些问题，你甚至还要问清楚“5W1H”，也就是 Who（谁）、What（什么）、Where（哪里）、When（何时）、Why（为什么）、How（如何）。
+
+举个例子，假设面试官让你描述咖啡机的面向对象设计。这个问题看似简单明了，其实不然。这台咖啡机可能是一款工业型机器，设计用来放在大餐厅里，每小时要服务几百位顾客，还要能制作 10 种不同口味的咖啡。又或者，它可能是设计给老年人使用的简易咖啡机，只要能制作简单的黑咖啡就行。这些用例将大大影响你的设计。
+
+## 定义核心对象
+
+比如，假设要为一家餐馆进行面向对象设计。那么，核心对象可能包括员工、服务员、厨师、餐桌、顾客、订单、菜。
+
+## 分析对象关系
+
+可以利用 UML 类图来分析。其中，
+
+- 服务员和厨师都继承自员工类；
+- 一个服务员要为多个餐桌的顾客提供服务；
+- 一个餐桌可以有很多顾客；
+- 一个餐桌可以有一个订单；
+- 一个订单有多个菜。
+- 一个厨师要处理多个订单；
+
+![](index_files/97c1d566-ae3a-4ddd-ba86-e8378e26d49b.png)
+
+## 研究对象的动作
+
+可以用时序图来找出对象的动作。
+
+多个顾客坐到一个餐桌，服务员来到餐桌前提供服务，并等待顾客填写订单。订单填写完成后，交给厨师处理订单，并等待厨师处理完成，完成之后服务员将上菜。
+
+![](index_files/4f901988-481c-48bf-a313-35778e2211bc.png)
+
+
+
+# 实现二十一点游戏
+
+设计通用扑克牌数据结构，并且实现二十一点游戏。
+
+面试时记得询问面试官“通用”的具体含义，这点很重要。
+
+假设这是一副标准纸牌，一共 52 张。
+
+我们以泛型实现了 Deck，同时把 T 的类型限定为 Card。另外，我们还将 Card 实现成抽象类，这是因为诸如 value() 的方法需要根据实际情况做调整，从而不止可以玩二十一点游戏。
+
+```java
+public enum Suit {
+    Club (0),
+    Diamond (1),
+    Heart (2),
+    Spade (3);
+
+    private int value;
+    private Suit(int v) {
+        value = v;
+    }
+
+    public int getValue() {
+        return value;
+    }
+
+    public static Suit getSuitFromValue(int value) {
+        switch (value) {
+        case 0:
+            return Suit.Club;
+        case 1:
+            return Suit.Diamond;
+        case 2:
+            return Suit.Heart;
+        case 3:
+            return Suit.Spade;
+        default:
+                return null;
+        }
+    }
+}
+```
+
+```java
+public class Deck <T extends Card> {
+    private ArrayList<T> cards;
+    private int dealtIndex = 0; // marks first undealt card
+
+    public Deck() {
+    }
+
+    public void setDeckOfCards(ArrayList<T> deckOfCards) {
+        cards = deckOfCards;
+    }
+
+    public void shuffle() {
+        for (int i = 0; i < cards.size(); i++) {
+            int j = AssortedMethods.randomIntInRange(i, cards.size() - i - 1);
+            T card1 = cards.get(i);
+            T card2 = cards.get(j);
+            cards.set(i, card2);
+            cards.set(j, card1);
+        }
+    }
+
+    public int remainingCards() {
+        return cards.size() - dealtIndex;
+    }
+
+    public T[] dealHand(int number) {
+        if (remainingCards() < number) {
+            return null;
+        }
+
+        T[] hand = (T[]) new Card[number];
+        int count = 0;
+        while (count < number) {
+            T card = dealCard();
+            if (card != null) {
+                hand[count] = card;
+                count++;
+            }
+        }
+
+        return hand;
+    }
+
+    public T dealCard() {
+        if (remainingCards() == 0) {
+            return null;
+        }
+
+        T card = cards.get(dealtIndex);
+        card.markUnavailable();
+        dealtIndex++;
+
+        return card;
+    }
+
+    public void print() {
+        for (Card card : cards) {
+            card.print();
+        }
+    }
+}
+```
+
+```java
+public abstract class Card {
+    private boolean available = true;
+
+    /* number or face that's on card - a number 2 through 10,
+     * or 11 for Jack, 12 for Queen, 13 for King, or 1 for Ace
+     */
+    protected int faceValue;
+    protected Suit suit;
+
+    public Card(int c, Suit s) {
+        faceValue = c;
+        suit = s;
+    }
+
+    public abstract int value();
+
+    public Suit suit() {
+        return suit;
+    }
+
+    /* returns whether or not the card is available to be given out to someone */
+    public boolean isAvailable() {
+        return available;
+    }
+
+    public void markUnavailable() {
+        available = false;
+    }
+
+    public void markAvailable() {
+        available = true;
+    }
+
+    public void print() {
+        String[] faceValues = {"A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"};
+        System.out.print(faceValues[faceValue - 1]);
+        switch (suit) {
+        case Club:
+            System.out.print("c");
+            break;
+        case Heart:
+            System.out.print("h");
+            break;
+        case Diamond:
+            System.out.print("d");
+            break;
+        case Spade:
+            System.out.print("s");
+            break;
+        }
+        System.out.print(" ");
+    }
+}
+```
+
+```java
+public class Hand <T extends Card> {
+    protected ArrayList<T> cards = new ArrayList<T>();
+
+    public int score() {
+        int score = 0;
+        for (T card : cards) {
+            score += card.value();
+        }
+        return score;
+    }
+
+    public void addCard(T card) {
+        cards.add(card);
+    }
+
+    public void print() {
+        for (Card card : cards) {
+            card.print();
+        }
+    }
+}
+```
+
+现在，假设要构建二十一点游戏，我们需要知道这些牌的数值。人头牌 K、 Q、 J 等于 10， Ace 为 11。
+
+```java
+public class BlackJackHand extends Hand<BlackJackCard> {
+    public BlackJackHand() {
+
+    }
+
+    public int score() {
+        ArrayList<Integer> scores = possibleScores();
+        int maxUnder = Integer.MIN_VALUE;
+        int minOver = Integer.MAX_VALUE;
+        for (int score : scores) {
+            if (score > 21 && score < minOver) {
+                minOver = score;
+            } else if (score <= 21 && score > maxUnder) {
+                maxUnder = score;
+            }
+        }
+        return maxUnder == Integer.MIN_VALUE ? minOver : maxUnder;
+    }
+
+    private ArrayList<Integer> possibleScores() {
+        ArrayList<Integer> scores = new ArrayList<Integer>();
+        if (cards.size() == 0) {
+            return scores;
+        }
+        for (BlackJackCard card : cards) {
+            addCardToScoreList(card, scores);
+        }
+        return scores;
+    }
+
+    private void addCardToScoreList(BlackJackCard card, ArrayList<Integer> scores) {
+        if (scores.size() == 0) {
+            scores.add(0);
+        }
+        int length = scores.size();
+        for (int i = 0; i < length; i++) {
+            int score = scores.get(i);
+            scores.set(i, score + card.minValue());
+            if (card.minValue() != card.maxValue()) {
+                scores.add(score + card.maxValue());
+            }
+        }
+    }
+
+    public boolean busted() {
+        return score() > 21;
+    }
+
+    public boolean is21() {
+        return score() == 21;
+    }
+
+    public boolean isBlackJack() {
+        if (cards.size() != 2) {
+            return false;
+        }
+        BlackJackCard first = cards.get(0);
+        BlackJackCard second = cards.get(1);
+        return (first.isAce() && second.isFaceCard()) || (second.isAce() && first.isFaceCard());
+    }
+}
+```
+
+```java
+public class BlackJackCard extends Card {
+    public BlackJackCard(int c, Suit s) {
+        super(c, s);
+    }
+
+    public int value() {
+        if (isAce()) { // Ace
+            return 1;
+        } else if (faceValue >= 11 && faceValue <= 13) { // Face card
+            return 10;
+        } else { // Number card
+            return faceValue;
+        }
+    }
+
+    public int minValue() {
+        if (isAce()) { // Ace
+            return 1;
+        } else {
+            return value();
+        }
+    }
+
+    public int maxValue() {
+        if (isAce()) { // Ace
+            return 11;
+        } else {
+            return value();
+        }
+    }
+
+    public boolean isAce() {
+        return faceValue == 1;
+    }
+
+    public boolean isFaceCard() {
+        return faceValue >= 11 && faceValue <= 13;
+    }
+}
+```
+
+```java
+public class BlackJackGameAutomator {
+    private Deck<BlackJackCard> deck;
+    private BlackJackHand[] hands;
+    private static final int HIT_UNTIL = 16;
+
+    public BlackJackGameAutomator(int numPlayers) {
+        hands = new BlackJackHand[numPlayers];
+        for (int i = 0; i < numPlayers; i++) {
+            hands[i] = new BlackJackHand();
+        }
+    }
+
+    public boolean dealInitial() {
+        for (BlackJackHand hand : hands) {
+            BlackJackCard card1 = deck.dealCard();
+            BlackJackCard card2 = deck.dealCard();
+            if (card1 == null || card2 == null) {
+                return false;
+            }
+            hand.addCard(card1);
+            hand.addCard(card2);
+        }
+        return true;
+    }
+
+    public ArrayList<Integer> getBlackJacks() {
+        ArrayList<Integer> winners = new ArrayList<Integer>();
+        for (int i = 0; i < hands.length; i++) {
+            if (hands[i].isBlackJack()) {
+                winners.add(i);
+            }
+        }
+        return winners;
+    }
+
+    public boolean playHand(int i) {
+        BlackJackHand hand = hands[i];
+        return playHand(hand);
+    }
+
+    public boolean playHand(BlackJackHand hand) {
+        while (hand.score() < HIT_UNTIL) {
+            BlackJackCard card = deck.dealCard();
+            if (card == null) {
+                return false;
+            }
+            hand.addCard(card);
+        }
+        return true;
+    }
+
+    public boolean playAllHands() {
+        for (BlackJackHand hand : hands) {
+            if (!playHand(hand)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public ArrayList<Integer> getWinners() {
+        ArrayList<Integer> winners = new ArrayList<Integer>();
+        int winningScore = 0;
+        for (int i = 0; i < hands.length; i++) {
+            BlackJackHand hand = hands[i];
+            if (!hand.busted()) {
+                if (hand.score() > winningScore) {
+                    winningScore = hand.score();
+                    winners.clear();
+                    winners.add(i);
+                } else if (hand.score() == winningScore) {
+                    winners.add(i);
+                }
+            }
+        }
+        return winners;
+    }
+
+    public void initializeDeck() {
+        ArrayList<BlackJackCard> cards = new ArrayList<BlackJackCard>();
+        for (int i = 1; i <= 13; i++) {
+            for (int j = 0; j <= 3; j++) {
+                Suit suit = Suit.getSuitFromValue(j);
+                BlackJackCard card = new BlackJackCard(i, suit);
+                cards.add(card);
+            }
+        }
+
+        deck = new Deck<BlackJackCard>();
+        deck.setDeckOfCards(cards);
+        deck.shuffle();
+    }
+
+    public void printHandsAndScore() {
+        for (int i = 0; i < hands.length; i++) {
+            System.out.print("Hand " + i + " (" + hands[i].score() + "): ");
+            hands[i].print();
+            System.out.println("");
+        }
+    }
+}
+```
+
+# 设计一款音乐点唱机
+
+但凡遇到面向对象设计的问题，一开始就要向面试官问几个问题，以便厘清设计时有哪些限制条件。这台点唱机放的是 CD 吗？是唱片？还是 MP3？它是计算机模拟软件，还是代表一台实体点唱机？播放音乐要收钱还是免费？收钱的话，要求哪国货币？可以找零吗？
+
+下面将作出一些假设。假设这台点唱机为计算机模拟软件，与实体点唱机非常相像，另外，假定播放音乐是免费的。
+
+系统组件:
+
+- 点唱机（Jukebox）；
+- CD；
+- 歌曲（Song）；
+- 艺术家（Artist）；
+- 播放列表（Playlist）；
+- 显示屏（Display，在屏幕上显示详细信息）。
+
+进一步分解上述组件，考虑可能的动作：
+
+- 新建播放列表（包括新增、删除和随机播放）
+- CD 选择器
+- 歌曲选择器
+- 将歌曲放进播放队列
+- 获取播放列表中的下一首歌曲
+
+还可以引入用户：
+
+- 添加；
+- 删除；
+- 信用信息。
+
+Jukebox 类代表此题的主体，系统各个组件之间或系统与用户间的大量交互，都是通过这个类实现的。
+
+```java
+public class JukeBox {
+    private CDPlayer cdPlayer;
+    private User user;
+    private Set<CD> cdCollection;
+    private SongSelector ts;
+
+    public JukeBox(CDPlayer cdPlayer, User user, Set<CD> cdCollection,
+                   SongSelector ts) {
+        super();
+        this.cdPlayer = cdPlayer;
+        this.user = user;
+        this.cdCollection = cdCollection;
+        this.ts = ts;
+    }
+
+    public Song getCurrentSong() { return ts.getCurrentSong();    }
+    public void setUser(User u) { this.user = u;    }
+}
+```
+
+跟实际 CD 播放器一样， CDPlayer 类一次只能放一张 CD。不在播放的 CD 都存放在点唱机里。
+
+```java
+public class CDPlayer {
+    private Playlist p;
+    private CD c;
+
+    public Playlist getPlaylist() { return p; }
+    public void setPlaylist(Playlist p) { this.p = p; }
+    public CD getCD() { return c; }
+    public void setCD(CD c) { this.c = c; }
+
+    public CDPlayer(Playlist p) { this.p = p; }
+    public CDPlayer(CD c, Playlist p) {
+        this.p = p;
+        this.c = c;
+    }
+
+    public CDPlayer(CD c){ this.c = c; }
+    public void playSong(Song s) {  }
+}
+```
+
+Playlist 类管理当前播放的歌曲和待播放的下一首歌曲。它本质上是播放队列的包裹类，还提供了一些操作起来更方便的方法
+
+```java
+public class Playlist {
+    private Song song;
+    private Queue<Song> queue;
+    public Playlist(Song song, Queue<Song> queue) {
+        super();
+        this.song = song;
+        this.queue = queue;
+    }
+
+    public Song getNextSongToPlay(){ return queue.peek(); }
+    public void queueUpSong(Song s){ queue.add(s); }
+}
+```
+
+SongSelector 类用户歌曲的选择。
+
+```java
+public class SongSelector {
+    private Song currentSong;
+    public SongSelector(Song s) { currentSong=s; }
+    public void setSong(Song s) { currentSong = s;    }
+    public Song getCurrentSong() { return currentSong;    }
+}
+```
+
+CD、Song 和 User 这几个类都相当简单，主要由成员变量、getter（访问）和 setter（设置）方法组成。
+
+```java
+public class CD {
+
+}
+```
+
+```java
+public class Song {
+    private String songName;
+    public String toString() { return songName; }
+}
+```
+
+```java
+public class User {
+    private String name;
+    public String getName() { return name; }
+    public void setName(String name) {    this.name = name; }
+    public long getID() { return ID; }
+    public void setID(long iD) { ID = iD; }
+    private long ID;
+    public User(String name, long iD) {
+        this.name = name;
+        ID = iD;
+    }
+    public User getUser() { return this; }
+    public static User addUser(String name, long iD){
+        return new User(name, iD);
+    }
+}
+```
+
+# 设计一个停车场
+
+问清楚允许哪些车辆进入停车场，它是不是多层的，等等。
+
+为便于描述，我们先做如下假设条件。
+
+- 停车场是多层的，每一层有好几排停车位。
+- 停车场可停放摩托车、轿车和大巴。
+- 停车场有摩托车车位、小车位和大车位。
+- 摩托车可停在任意车位上。
+- 轿车可停在单个小车位或大车位上。
+- 大巴可停在同一排五个连续的大车位上，但不能停在小车位上。
+
+创建了抽象类 Vehicle，而 Car、Bus 和 Motorcycle 都继承自这个类。
+
+```java
+public abstract class Vehicle {
+    protected ArrayList<ParkingSpot> parkingSpots = new ArrayList<ParkingSpot>();
+    protected String licensePlate;
+    protected int spotsNeeded;
+    protected VehicleSize size;
+
+    public int getSpotsNeeded() {
+        return spotsNeeded;
+    }
+
+    public VehicleSize getSize() {
+        return size;
+    }
+
+    /* Park vehicle in this spot (among others, potentially) */
+    public void parkInSpot(ParkingSpot spot) {
+        parkingSpots.add(spot);
+    }
+
+    /* Remove car from spot, and notify spot that it's gone */
+    public void clearSpots() {
+        for (int i = 0; i < parkingSpots.size(); i++) {
+            parkingSpots.get(i).removeVehicle();
+        }
+        parkingSpots.clear();
+    }
+
+    public abstract boolean canFitInSpot(ParkingSpot spot);
+    public abstract void print();
+}
+```
+
+```java
+public class Car extends Vehicle {
+    public Car() {
+        spotsNeeded = 1;
+        size = VehicleSize.Compact;
+    }
+
+    public boolean canFitInSpot(ParkingSpot spot) {
+        return spot.getSize() == VehicleSize.Large || spot.getSize() == VehicleSize.Compact;
+    }
+
+    public void print() {
+        System.out.print("C");
+    }
+}
+```
+
+```java
+public class Bus extends Vehicle {
+    public Bus() {
+        spotsNeeded = 5;
+        size = VehicleSize.Large;
+    }
+
+    public boolean canFitInSpot(ParkingSpot spot) {
+        return spot.getSize() == VehicleSize.Large;
+    }
+
+    public void print() {
+        System.out.print("B");
+    }
+}
+```
+
+```java
+public class Motorcycle extends Vehicle {
+    public Motorcycle() {
+        spotsNeeded = 1;
+        size = VehicleSize.Motorcycle;
+    }
+
+    public boolean canFitInSpot(ParkingSpot spot) {
+        return true;
+    }
+
+    public void print() {
+        System.out.print("M");
+    }
+}
+```
+
+使用 Level 表示停车场的一层。
+
+```java
+public class Level {
+    private int floor;
+    private ParkingSpot[] spots;
+    private int availableSpots = 0; // number of free spots
+    private static final int SPOTS_PER_ROW = 10;
+
+    public Level(int flr, int numberSpots) {
+        floor = flr;
+        spots = new ParkingSpot[numberSpots];
+        int largeSpots = numberSpots / 4;
+        int bikeSpots = numberSpots / 4;
+        int compactSpots = numberSpots - largeSpots - bikeSpots;
+        for (int i = 0; i < numberSpots; i++) {
+            VehicleSize sz = VehicleSize.Motorcycle;
+            if (i < largeSpots) {
+                sz = VehicleSize.Large;
+            } else if (i < largeSpots + compactSpots) {
+                sz = VehicleSize.Compact;
+            }
+            int row = i / SPOTS_PER_ROW;
+            spots[i] = new ParkingSpot(this, row, i, sz);
+        }
+        availableSpots = numberSpots;
+    }
+
+    public int availableSpots() {
+        return availableSpots;
+    }
+
+    /* Try to find a place to park this vehicle. Return false if failed. */
+    public boolean parkVehicle(Vehicle vehicle) {
+        if (availableSpots() < vehicle.getSpotsNeeded()) {
+            return false;
+        }
+        int spotNumber = findAvailableSpots(vehicle);
+        if (spotNumber < 0) {
+            return false;
+        }
+        return parkStartingAtSpot(spotNumber, vehicle);
+    }
+
+    /* Park a vehicle starting at the spot spotNumber, and continuing until vehicle.spotsNeeded. */
+    private boolean parkStartingAtSpot(int spotNumber, Vehicle vehicle) {
+        vehicle.clearSpots();
+        boolean success = true;
+        for (int i = spotNumber; i < spotNumber + vehicle.spotsNeeded; i++) {
+             success &= spots[i].park(vehicle);
+        }
+        availableSpots -= vehicle.spotsNeeded;
+        return success;
+    }
+
+    /* find a spot to park this vehicle. Return index of spot, or -1 on failure. */
+    private int findAvailableSpots(Vehicle vehicle) {
+        int spotsNeeded = vehicle.getSpotsNeeded();
+        int lastRow = -1;
+        int spotsFound = 0;
+        for (int i = 0; i < spots.length; i++) {
+            ParkingSpot spot = spots[i];
+            if (lastRow != spot.getRow()) {
+                spotsFound = 0;
+                lastRow = spot.getRow();
+            }
+            if (spot.canFitVehicle(vehicle)) {
+                spotsFound++;
+            } else {
+                spotsFound = 0;
+            }
+            if (spotsFound == spotsNeeded) {
+                return i - (spotsNeeded - 1);
+            }
+        }
+        return -1;
+    }
+
+    public void print() {
+        int lastRow = -1;
+        for (int i = 0; i < spots.length; i++) {
+            ParkingSpot spot = spots[i];
+            if (spot.getRow() != lastRow) {
+                System.out.print("  ");
+                lastRow = spot.getRow();
+            }
+            spot.print();
+        }
+    }
+
+    /* When a car was removed from the spot, increment availableSpots */
+    public void spotFreed() {
+        availableSpots++;
+    }
+}
+```
+
+为处理不同大小的车位，我们用了一个类 ParkingSpot，并以它的成员变量表示车位大小。ParkingLot 类本质上就是 Level 数组的包裹类。以这种方式实现，我们就能将真正寻找空车位和泊车的处理逻辑从 ParkingLot 里更为广泛的动作中抽取出来。要是不这么做，就需要将车位放在某种双数组中（或将车位位于所在楼层的编号对应到车位列表的散列表）。将 ParkingLot 与 Level 分离开来，整个设计更显清晰。
+
+```java
+public class ParkingSpot {
+    private Vehicle vehicle;
+    private VehicleSize spotSize;
+    private int row;
+    private int spotNumber;
+    private Level level;
+
+    public ParkingSpot(Level lvl, int r, int n, VehicleSize sz) {
+        level = lvl;
+        row = r;
+        spotNumber = n;
+        spotSize = sz;
+    }
+
+    public boolean isAvailable() {
+        return vehicle == null;
+    }
+
+    /* Checks if the spot is big enough for the vehicle (and is available). This compares
+     * the SIZE only. It does not check if it has enough spots. */
+    public boolean canFitVehicle(Vehicle vehicle) {
+        return isAvailable() && vehicle.canFitInSpot(this);
+    }
+
+    /* Park vehicle in this spot. */
+    public boolean park(Vehicle v) {
+        if (!canFitVehicle(v)) {
+            return false;
+        }
+        vehicle = v;
+        vehicle.parkInSpot(this);
+        return true;
+    }
+
+    public int getRow() {
+        return row;
+    }
+
+    public int getSpotNumber() {
+        return spotNumber;
+    }
+
+    public VehicleSize getSize() {
+        return spotSize;
+    }
+
+    /* Remove vehicle from spot, and notify level that a new spot is available */
+    public void removeVehicle() {
+        level.spotFreed();
+        vehicle = null;
+    }
+
+    public void print() {
+        if (vehicle == null) {
+            if (spotSize == VehicleSize.Compact) {
+                System.out.print("c");
+            } else if (spotSize == VehicleSize.Large) {
+                System.out.print("l");
+            } else if (spotSize == VehicleSize.Motorcycle) {
+                System.out.print("m");
+            }
+        } else {
+            vehicle.print();
+        }
+    }
+}
+
+public enum VehicleSize {
+    Motorcycle,
+    Compact,
+    Large,
+}
+```
+
+# 设计在线图书阅读器系统
+
+主要的对象有 User、Book 和 Library。
+
+```java
+public class User {
+    private int userId;
+    private String details;
+    private int accountType;
+
+    public void renewMembership() {  }
+
+    public User(int id, String details, int accountType) {
+        userId = id;
+        this.details = details;
+        this.accountType = accountType;
+    }
+
+    /* getters and setters */
+    public int getID() { return userId; }
+    public void setID(int id) { userId = id; }
+    public String getDetails() { return details; }
+    public void setDetails(String details) { this.details = details; }
+    public int getAccountType() { return accountType; }
+    public void setAccountType(int accountType) {
+        this.accountType = accountType;
+    }
+}
+```
+
+```java
+public class Book {
+    private int bookId;
+    private String details;
+
+    public Book(int id, String det) {
+        bookId = id;
+        details = det;
+    }
+
+    public void update() { }
+
+    public int getID() {
+        return bookId;
+    }
+
+    public void setID(int id) {
+        bookId = id;
+    }
+
+    public String getDetails() {
+        return details;
+    }
+
+    public void setDetails(String details) {
+        this.details = details;
+    }
+}
+```
+
+```java
+public class Library {
+
+    private Hashtable<Integer, Book> books;
+
+    public Book addBook(int id, String details) {
+        if (books.containsKey(id)) {
+            return null;
+        }
+        Book book = new Book(id, details);
+        books.put(id, book);
+        return book;
+    }
+
+    public boolean remove(Book b){
+        return remove(b.getID());
+    }
+
+    public boolean remove(int id) {
+        if (!books.containsKey(id)) {
+            return false;
+        }
+        books.remove(id);
+        return true;
+    }
+
+    public Book find(int id){
+        return books.get(id);
+    }
+}
+```
+
+管理用户，刷新显示画面等功能可以单独放在一个类中。
+
+```java
+public class UserManager {
+    private Hashtable<Integer, User> users;
+
+    public User addUser(int id, String details, int accountType) {
+        if (users.containsKey(id)) {
+            return null;
+        }
+        User user = new User(id, details, accountType);
+        users.put(id, user);
+        return user;
+    }
+
+    public boolean remove(User u) {
+        return remove(u.getID());
+    }
+
+    public boolean remove(int id) {
+        if (!users.containsKey(id)) {
+            return false;
+        }
+        users.remove(id);
+        return true;
+    }
+
+    public User find(int id){
+        return users.get(id);
+    }
+}
+```
+
+```java
+public class Display {
+    private Book activeBook;
+    private User activeUser;
+    private int pageNumber = 0;
+
+    public void displayUser(User user) {
+        activeUser = user;
+        refreshUsername();
+    }
+
+    public void displayBook(Book book) {
+        pageNumber = 0;
+        activeBook = book;
+
+        refreshTitle();
+        refreshDetails();
+        refreshPage();
+    }
+
+    public void refreshUsername() {
+        /* updates username display */
+    }
+
+    public void refreshTitle() {
+        /* updates title display */
+    }
+
+    public void refreshDetails() {
+        /* updates details display */
+    }
+
+    public void refreshPage() {
+        /* updated page display */
+    }
+
+    public void turnPageForward() {
+        pageNumber++;
+        refreshPage();
+    }
+
+    public void turnPageBackward() {
+        pageNumber--;
+        refreshPage();
+    }
+}
+```
+
+最后是系统的客户端类
+
+```java
+public class OnlineReaderSystem {
+    private Library library;
+    private UserManager userManager;
+    private Display display;
+
+    private Book activeBook;
+    private User activeUser;
+
+    public OnlineReaderSystem() {
+        userManager = new UserManager();
+        library = new Library();
+        display = new Display();
+    }
+
+    public Library getLibrary() {
+        return library;
+    }
+
+    public UserManager getUserManager() {
+        return userManager;
+    }
+
+    public Display getDisplay() {
+        return display;
+    }
+
+    public Book getActiveBook() {
+        return activeBook;
+    }
+
+    public void setActiveBook(Book book) {
+        display.displayBook(book);
+        activeBook = book;
+    }
+
+    public User getActiveUser() {
+        return activeUser;
+    }
+
+    public void setActiveUser(User user) {
+        activeUser = user;
+        display.displayUser(user);
+    }
+}
+```
+
+# 设计内存文件系统
+
+文件系统主要由 File 和 Directory 组成，使用组合模式。
+
+```java
+public abstract class Entry {
+    protected Directory parent;
+    protected long created;
+    protected long lastUpdated;
+    protected long lastAccessed;
+    protected String name;
+
+    public Entry(String n, Directory p) {
+        name = n;
+        parent = p;
+        created = System.currentTimeMillis();
+    }
+
+    public boolean delete() {
+        if (parent == null) {
+            return false;
+        }
+        return parent.deleteEntry(this);
+    }
+
+    public abstract int size();
+
+    public String getFullPath() {
+        if (parent == null) {
+            return name;
+        } else {
+            return parent.getFullPath() + "/" + name;
+        }
+    }
+
+    public long getCreationTime() {
+        return created;
+    }
+
+    public long getLastUpdatedTime() {
+        return lastUpdated;
+    }
+
+    public long getLastAccessedTime() {
+        return lastAccessed;
+    }
+
+    public void changeName(String n) {
+        name = n;
+    }
+
+    public String getName() {
+        return name;
+    }
+}
+```
+
+```jva
+public abstract class Entry {
+    protected Directory parent;
+    protected long created;
+    protected long lastUpdated;
+    protected long lastAccessed;
+    protected String name;
+
+    public Entry(String n, Directory p) {
+        name = n;
+        parent = p;
+        created = System.currentTimeMillis();
+    }
+
+    public boolean delete() {
+        if (parent == null) {
+            return false;
+        }
+        return parent.deleteEntry(this);
+    }
+
+    public abstract int size();
+
+    public String getFullPath() {
+        if (parent == null) {
+            return name;
+        } else {
+            return parent.getFullPath() + "/" + name;
+        }
+    }
+
+    public long getCreationTime() {
+        return created;
+    }
+
+    public long getLastUpdatedTime() {
+        return lastUpdated;
+    }
+
+    public long getLastAccessedTime() {
+        return lastAccessed;
+    }
+
+    public void changeName(String n) {
+        name = n;
+    }
+
+    public String getName() {
+        return name;
+    }
+}
+```
+
+```java
+public class File extends Entry {
+    private String content;
+    private int size;
+
+    public File(String n, Directory p, int sz) {
+        super(n, p);
+        size = sz;
+    }
+
+    public int size() {
+        return size;
+    }
+
+    public String getContents() {
+        return content;
+    }
+
+    public void setContents(String c) {
+        content = c;
+    }
+}
+```
+
+# 聊天服务器
+
+请描述该如何设计一个聊天服务器。要求给出各种后台组件、类和方法的细节，并说明其中最难解决的问题会是什么。
+
+设计聊天服务器是项大工程，绝非一次面试就能完成。毕竟，就算一整个团队，也要花费数月乃至好几年才能打造出一个聊天服务器。作为求职者，你的工作是专注解决该问题的某个方面，涉及范围要够广，又要够集中，这样才能在一轮面试中搞定。它不一定要与真实情况一模一样，但也应该忠实反映出实际的实现。
+
+这里我们会把注意力放在用户管理和对话等核心功能：添加用户、创建对话、更新状态，等等。考虑到时间和空间有限，我们不会探讨这个问题的联网部分，也不描述数据是怎么真正推送到客户端的。
+
+另外，我们假设“好友关系”是双向的，如果你是我的联系人之一，那就表示我也是你的联系人之一。我们的聊天系统将支持群组聊天和一对一（私密）聊天，但并不考虑语音聊天、视频聊天或文件传输。
+
+## 需要支持的特定动作
+
+这也有待你跟面试官探讨，下面列出几点想法。
+
+- 显示在线和离线状态
+- 添加请求（发送、接受、拒绝）
+- 更新状态信息
+- 发起私聊和群聊
+- 在私聊和群聊中添加新信息
+
+这只是一部分列表，如果时间有富余，还可以多加一些动作。
+
+## 核心组件
+
+这个系统可能由一个数据库、一组客户端和一组服务器组成。我们的面向对象设计不会包含这些部分，不过可以讨论一下系统的整体概览。
+
+数据库将用来存放更持久的数据，比如用户列表或聊天对话的备份。SQL 数据库应该是不错的选择，或者，如果可扩展性要求更高，可以选用 BigTable 或其他类似的系统。
+
+对于客户端和服务器之间的通信，使用 XML 应该也不错。尽管这种格式不是最紧凑的（你也应该向面试官指出这一点），它仍是很不错的选择，因为不管是计算机还是人类都容易辨识。使用 XML 可以让程序调试起来更轻松，这一点非常重要。
+
+服务器由一组机器组成，数据会分散到各台机器上，这样一来，我们可能就必须从一台机器跳到另一台机器。如果可能的话，我们会尽量在所有机器上复制部分数据，以减少查询操作的次数。在此，设计上有个重要的限制条件，就是必须防止出现单点故障。例如，如果一台机器控制所有用户的登录，那么，只要这一台机器断网，就会造成数以百万计的用户无法登录。
+
+## 关键对象和方法
+
+系统的关键对象包括用户、对话和状态消息等，我们已经实现了 UserManagement 类。要是更关注这个问题的联网方面或其他组件，我们就可能转而深入探究那些对象。
+
+```java
+public class UserManager {
+    private static UserManager instance;
+    private HashMap<Integer, User> usersById = new HashMap<Integer, User>();
+    private HashMap<String, User> usersByAccountName = new HashMap<String, User>();
+    private HashMap<Integer, User> onlineUsers = new HashMap<Integer, User>();
+
+    public static UserManager getInstance() {
+        if (instance == null) {
+            instance = new UserManager();
+        }
+        return instance;
+    }
+
+    public void addUser(User fromUser, String toAccountName) {
+        User toUser = usersByAccountName.get(toAccountName);
+        AddRequest req = new AddRequest(fromUser, toUser, new Date());
+        toUser.receivedAddRequest(req);
+        fromUser.sentAddRequest(req);
+    }
+
+    public void approveAddRequest(AddRequest req) {
+        req.status = RequestStatus.Accepted;
+        User from = req.getFromUser();
+        User to = req.getToUser();
+        from.addContact(to);
+        to.addContact(from);
+    }
+
+    public void rejectAddRequest(AddRequest req) {
+        req.status = RequestStatus.Rejected;
+        User from = req.getFromUser();
+        User to = req.getToUser();
+        from.removeAddRequest(req);
+        to.removeAddRequest(req);
+    }
+
+    public void userSignedOn(String accountName) {
+        User user = usersByAccountName.get(accountName);
+        if (user != null) {
+            user.setStatus(new UserStatus(UserStatusType.Available, ""));
+            onlineUsers.put(user.getId(), user);
+        }
+    }
+
+    public void userSignedOff(String accountName) {
+        User user = usersByAccountName.get(accountName);
+        if (user != null) {
+            user.setStatus(new UserStatus(UserStatusType.Offline, ""));
+            onlineUsers.remove(user.getId());
+        }
+    }
+}
+```
+
+在 User 类中， receivedAddRequest 方法会通知用户 B（User B），用户 A（User A）请求加他 为 好 友 。 用 户 B 会 接 受 或 拒 绝 该 请 求 （ 通 过 UserManager.approveAddRequest 或 rejectAddRequest）， UserManager 则负责将用户互相添加到对方的通讯录中。
+
+当 UserManager 要将 AddRequest 加入用户 A 的请求列表时，会调用 User 类的 sentAddRequest 方法。综上，整个流程如下。
+
+1. 用户 A 点击客户端软件上的“添加用户”，发送给服务器。
+2. 用户 A 调用 requestAddUser(User B)。
+3. 步骤 2 的方法会调用 UserManager.addUser。
+4. UserManager 会调用 User A.sentAddRequest 和 User B.receivedAddRequest。
+
+```java
+public class User {
+    private int id;
+    private UserStatus status = null;
+    private HashMap<Integer, PrivateChat> privateChats = new HashMap<Integer, PrivateChat>();
+    private ArrayList<GroupChat> groupChats = new ArrayList<GroupChat>();
+    private HashMap<Integer, AddRequest> receivedAddRequests = new HashMap<Integer, AddRequest>();
+    private HashMap<Integer, AddRequest> sentAddRequests = new HashMap<Integer, AddRequest>();
+
+    private HashMap<Integer, User> contacts = new HashMap<Integer, User>();
+    private String accountName;
+    private String fullName;
+
+    public User(int id, String accountName, String fullName) {
+        this.accountName = accountName;
+        this.fullName = fullName;
+        this.id = id;
+    }
+
+    public boolean sendMessageToUser(User toUser, String content) {
+        PrivateChat chat = privateChats.get(toUser.getId());
+        if (chat == null) {
+            chat = new PrivateChat(this, toUser);
+            privateChats.put(toUser.getId(), chat);
+        }
+        Message message = new Message(content, new Date());
+        return chat.addMessage(message);
+    }
+
+    public boolean sendMessageToGroupChat(int groupId, String content) {
+        GroupChat chat = groupChats.get(groupId);
+        if (chat != null) {
+            Message message = new Message(content, new Date());
+            return chat.addMessage(message);
+        }
+        return false;
+    }
+
+    public void setStatus(UserStatus status) {
+        this.status = status;
+    }
+
+    public UserStatus getStatus() {
+        return status;
+    }
+
+    public boolean addContact(User user) {
+        if (contacts.containsKey(user.getId())) {
+            return false;
+        } else {
+            contacts.put(user.getId(), user);
+            return true;
+        }
+    }
+
+    public void receivedAddRequest(AddRequest req) {
+        int senderId = req.getFromUser().getId();
+        if (!receivedAddRequests.containsKey(senderId)) {
+            receivedAddRequests.put(senderId, req);
+        }
+    }
+
+    public void sentAddRequest(AddRequest req) {
+        int receiverId = req.getFromUser().getId();
+        if (!sentAddRequests.containsKey(receiverId)) {
+            sentAddRequests.put(receiverId, req);
+        }
+    }
+
+    public void removeAddRequest(AddRequest req) {
+        if (req.getToUser() == this) {
+            receivedAddRequests.remove(req);
+        } else if (req.getFromUser() == this) {
+            sentAddRequests.remove(req);
+        }
+    }
+
+    public void requestAddUser(String accountName) {
+        UserManager.getInstance().addUser(this, accountName);
+    }
+
+    public void addConversation(PrivateChat conversation) {
+        User otherUser = conversation.getOtherParticipant(this);
+        privateChats.put(otherUser.getId(), conversation);
+    }
+
+    public void addConversation(GroupChat conversation) {
+        groupChats.add(conversation);
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public String getAccountName() {
+        return accountName;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+}
+```
+
+Conversation 类实现为一个抽象类，因为所有 Conversation 不是 GroupChat 就是 PrivateChat，同时每个类各有自己的功能。
+
+```java
+public abstract class Conversation {
+    protected ArrayList<User> participants = new ArrayList<User>();
+    protected int id;
+    protected ArrayList<Message> messages = new ArrayList<Message>();
+
+    public ArrayList<Message> getMessages() {
+        return messages;
+    }
+
+    public boolean addMessage(Message m) {
+        messages.add(m);
+        return true;
+    }
+
+    public int getId() {
+        return id;
+    }
+}
+```
+
+```java
+public class GroupChat extends Conversation {
+    public void removeParticipant(User user) {
+        participants.remove(user);
+    }
+
+    public void addParticipant(User user) {
+        participants.add(user);
+    }
+}
+```
+
+```java
+public class PrivateChat extends Conversation {
+    public PrivateChat(User user1, User user2) {
+        participants.add(user1);
+        participants.add(user2);
+    }
+
+    public User getOtherParticipant(User primary) {
+        if (participants.get(0) == primary) {
+            return participants.get(1);
+        } else if (participants.get(1) == primary) {
+            return participants.get(0);
+        }
+        return null;
+    }
+}
+```
+
+```java
+public class Message {
+    private String content;
+    private Date date;
+    public Message(String content, Date date) {
+        this.content = content;
+        this.date = date;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public Date getDate() {
+        return date;
+    }
+}
+```
+
+AddRequest 和 UserStatus 两个类比较简单，功能不多，主要用来将数据聚合在一起，方便其他类使用。
+
+```java
+public class AddRequest {
+    private User fromUser;
+    private User toUser;
+    private Date date;
+    RequestStatus status;
+
+    public AddRequest(User from, User to, Date date) {
+        fromUser = from;
+        toUser = to;
+        this.date = date;
+        status = RequestStatus.Unread;
+    }
+
+    public RequestStatus getStatus() {
+        return status;
+    }
+
+    public User getFromUser() {
+        return fromUser;
+    }
+
+    public User getToUser() {
+        return toUser;
+    }
+
+    public Date getDate() {
+        return date;
+    }
+}
+```
+
+```java
+public class UserStatus {
+     private String message;
+     private UserStatusType type;
+     public UserStatus(UserStatusType type, String message) {
+         this.type = type;
+         this.message = message;
+     }
+
+     public UserStatusType getStatusType() {
+         return type;
+     }
+
+     public String getMessage() {
+         return message;
+     }
+}
+```
+
+```java
+public enum UserStatusType {
+    Offline, Away, Idle, Available, Busy
+}
+```
+
+```java
+public enum RequestStatus {
+    Unread, Read, Accepted, Rejected
+}
+```
+
+## 最难解决或最有意思的问题
+
+**问题 1：如何确定某人在线**
+
+虽然希望用户在退出时通知我们，但即便如此也无法确切知道状态。例如，用户的网络连接可能断开了。为了确定用户何时退出，或许可以试着定期询问客户端，以确保它仍然在线。
+
+**问题 2：如何处理冲突的信息**
+
+部分信息存储在计算机内存中，部分则存储在数据库里。如果两者不同步有冲突，那会出什么问题？哪一部分是“正确的”？
+
+**问题 3：如何才能让服务器在任何负载下都能应付自如**
+
+前面我们设计聊天服务器时并没怎么考虑可扩展性，但在实际场景中必须予以关注。我们需要将数据分散到多台服务器上，而这又要求我们更关注数据的不同步。
+
+**问题 4：如何预防拒绝服务攻击**
+
+客户端可以向我们推送数据——若它们试图向服务器发起拒绝服务（DOS）攻击，怎么办？该如何预防？
+
+# 大型社交网站计算两个人的好友关系
+
+设计诸如 Facebook 或 LinkedIn 的超大型社交网站，可以展示两个人之间的社交路径，比如：我 -> Bob -> Susan-> 你。
+
+## 简化问题
+
+先不考虑系统的规模，那么可以为每个用户保存好友 id 的列表，利用这个列表，可以构建一个图，每个用户看作一个结点，两个结点之间若有连线，则表示这两个用户为朋友。
+
+要计算两个好友的好友关系，可以先从一个人开始然后进行广度优先搜索。不采用深度优先搜索是因为它的效率很低，两个用户可能只有一度之隔，深度优先搜索可能要搜索非常多的节点才能找到两个用户的连接。
+
+```java
+public class Person {
+    private ArrayList<Integer> friendIDs;
+}
+```
+
+## 空间限制
+
+处理 LinkedIn 或 Facebook 这种规模的服务时，不可能将所有用户信息不可能都放在同一台机器上，此时需要进行拆分，并且维护一个用户到机器的散列表。此时在计算好友关系时，就需要先计算一个用户所在的机器编号，然后在这台机器上查找出用户信息，最后再根据广度优先搜索找出两个用户的还有路径。
+
+- int machine_index = Server.getMachineIDForUser(personID);
+- Machine machine = Server.getMachineWithId(machine_index);
+- Person friend = machine.getPersonWithID(person_id);
+
+下面的代码描绘了这一过程，定义了一个 Server 类来管理用户到机器的映射，定义了一个 Machine 类代表一台单独的机器来存储用户信息。
+
+```java
+public class Server {
+    HashMap<Integer, Machine> machines = new HashMap<Integer, Machine>();
+    HashMap<Integer, Integer> personToMachineMap = new HashMap<Integer, Integer>();
+
+    public Machine getMachineWithId(int machineID) {
+        return machines.get(machineID);
+    }
+
+    public int getMachineIDForUser(int personID) {
+        Integer machineID = personToMachineMap.get(personID);
+        return machineID == null ? -1 : machineID;
+    }
+
+    public Person getPersonWithID(int personID) {
+        Integer machineID = personToMachineMap.get(personID);
+        if (machineID == null) {
+            return null;
+        }
+        Machine machine = getMachineWithId(machineID);
+        if (machine == null) {
+            return null;
+        }
+        return machine.getPersonWithID(personID);
+    }
+}
+```
+
+```java
+public class Person {
+    private ArrayList<Integer> friends;
+    private int personID;
+    private String info;
+
+    public Person(int id) {
+        this.personID = id;
+    }
+
+    public String getInfo() {
+        return info;
+    }
+    public void setInfo(String info) {
+        this.info = info;
+    }
+
+    public int[] getFriends() {
+        int[] temp = new int[friends.size()];
+        for (int i = 0; i < temp.length; i++) {
+            temp[i] = friends.get(i);
+        }
+        return temp;
+    }
+    public int getID() {
+        return personID;
+    }
+    public void addFriend(int id) {
+        friends.add(id);
+    }
+}
+```
+
+```java
+public class Machine {
+    public HashMap<Integer, Person> persons = new HashMap<Integer, Person>();
+    public int machineID;
+
+    public Person getPersonWithID(int personID) {
+        return persons.get(personID);
+    }
+}
+```
+
+## 优化
+
+**减少机器间跳转的次数**
+
+从一台机器跳转到另一台机器的开销很昂贵，不要为了找到某个朋友就在机器之间任意跳转，而是试着批处理这些跳转动作。举例来说，如果有五个朋友都在同一台机器上，那就应该一次性找出来。
+
+**智能划分用户和机器**
+
+人们跟生活在同一国家的人成为朋友的可能性比较大，不要随意将用户划分到不同机器上，而应该尽量按国家、城市、州等进行划分。这样一来，就可以减少跳转的次数。
+
+**处理广度优先搜索过程中的标记问题**
+
+在这个系统中不能直接修改 Person 对象来进行标记，因为同一时间可能会执行很多搜索操作。需要为每一个搜索操作都建立一个 visited 数组标记或者散列表标记。
+
+## 其它问题
+
+- 如何处理服务器故障？
+- 如何利用缓存？
+- 广度优先搜索过程中如何防止不断地进行搜索？
+
+# 爬虫防止进入无限循环
+
+## 爬虫原理
+
+- 首先选取一部分精心挑选的种子 URL；
+- 将这些 URL 放入待抓取 URL 队列；
+- 从待抓取 URL 队列中取出待抓取的 URL，解析 DNS，并且得到主机的 IP，并将 URL 对应的网页下载下来，存储进已下载网页库中。此外，将这些 URL 放进已抓取 URL 队列。
+- 分析已抓取 URL 对应的网页，分析页面里包含的其他 URL，并且将 URL 放入待抓取 URL 队列，从而进入下一个循环。
+
+![](index_files/7134135a-5af8-4dc7-9574-ae4ca12d74a5.jpg)
+
+## 进入循环的条件
+
+可以将整个网络看成一个图，如果图中存在环就会进入循环。
+
+避免进入循环就是将访问过的页面进行标记。
+
+## 根据 URL 进行标记
+
+最直接的方法是将已经访问过的 URL 进行标记，标记过的 URL 不再爬取。
+
+但是 URL 具有别名，也就是一些相同的 URL 可以有多种表现形式，例如：
+
+| URl 1 | URL 2 |
+| --- | --- |
+| www.foo.com/bar.html | www.foo.com:80/bar.html |
+| www.foo.com/x.html#top | www.foo.com/x.html#middle |
+| www.baidu.com | www.BAIDU.com |
+| www.foo.com/index.html | www.foo.com |
+| www.foo.com/index.html | www.209.123.123/index.html |
+
+## 根据页面内容进行标记
+
+使用页面内容进行标记也有问题，因为页面内容具有动态性，相同的页面往往会有呈现不同的内容。
+
+## 评估相似度
+
+对于每个页面，我们都会根据内容片段和页面的 URL，算出某种特征码。如果一个页面的特征码和其它页面的特征码具有一定的相似度，那么就降低抓取其子页面的优先级。具体实现如下：
+
+我们有一个数据库，储存了待抓取的一系列条目。每一次循环，我们都会选择最高优先级的页面进行抓取，接着执行以下步骤。
+
+- 打开该页面，根据页面的特定片段及其 URL，创建该页面的特征码。
+- 查询数据库，看看最近是否已抓取拥有该特征码的页面。
+- 若有此特征码的页面最近已被抓取过，则将该页面插回数据库，并调低优先级。
+- 若未抓取，则抓取该页面，并将它的链接插入数据库。
+
+# 参考资料
+
+- GAYLELEAKMANNMCDOWELL. 程序员面试金典 [M]. 人民邮电出版社 , 2013.

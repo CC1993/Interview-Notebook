@@ -1,0 +1,526 @@
+# 一、HTML
+
+## 基础
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title> My first HTML! </title>
+    <link href="mystyle.css" rel="stylesheet">
+    <script src="myscript.js"></script>
+  </head>
+  <body>
+    <h1> Hello World! </h1>
+  </body>
+</html>
+```
+
+HTML 定义了很多标签，标签往往成对存在，分为开始标签和结束标签。
+
+开始标签和结束标签以及它们之间的所有内容称为元素。
+
+元素可以嵌套元素，构成树形结构，根节点为 &lt;html>，有两个子节点 &lt;head> 和 &lt;body>。
+
+属性位于开始标签之内，以 name="value" 的形式存在，例如 link 标签中的 href 属性。
+
+id 属性和 class 属性分别定义元素的唯一 id 值和所属的类，主要作用是让选择器能够查找到元素，从而让 css 为元素渲染样式，或者 js 对元素进行操作。style 属性用于定义元素的内联样式，但是通常不适用 style 属性，而是使用 css 样式表。
+
+## 常用标签
+
+- 标题：&lt;h[1-6]>
+- 段落：&lt;p>
+- 引用：&lt;blockquote>
+- 注释：&lt;!-- 这是一段注释 -->
+
+## 格式化代码
+
+&lt;code&gt; 可以用来格式化程序代码，但是不能保留多余的空格和换行，也就是说连续的空格和换行只会保留第一个，需要使用嵌套 &lt;pre&gt; 标签使用。例如：
+
+```html
+<code>
+<pre>
+var person = {
+    firstName:"Bill",
+    lastName:"Gates",
+    age:50,
+    eyeColor:"blue"
+}
+</pre>
+</code>
+```
+
+## 链接
+
+```html
+<a href="url">Link text</a>
+```
+
+将 target 属性设置为"\_blank"，则点击链接会在新标签页中打开。
+
+name 属性可以定义锚点，可以将页面跳转到指定锚点。要跳转到指定锚点，需要在 url 尾部加上 # 和锚点值。
+
+```html
+<a name="anchor"></a>
+<a href="url#anchor"> 跳转到锚点 </a>
+```
+
+## 图片
+
+```html
+<img src="boat.gif" alt="Big Boat">
+```
+
+alt 属性为替代文本，当图片无法显示或者正在加载的时候会显示该文本。
+
+## 表格
+
+```html
+<table border="1">
+    <tr>
+        <th>Heading</th>
+        <th>Another Heading</th>
+    </tr>
+    <tr>
+        <td>row 1, cell 1</td>
+        <td>row 1, cell 2</td>
+    </tr>
+    <tr>
+        <td>row 2, cell 1</td>
+        <td>row 2, cell 2</td>
+    </tr>
+</table>
+```
+
+- 行：&lt;tr>
+- 列：&lt;td>
+- 表头：&lt;th>
+
+## 列表
+
+无序列表：
+
+```html
+<ul>
+    <li>Coffee</li>
+    <li>Milk</li>
+</ul>
+```
+
+有序列表：
+
+```html
+<ol>
+    <li>Coffee</li>
+    <li>Milk</li>
+</ol>
+```
+
+## 分组
+
+&lt;div> 和 &lt;span> 都可以定义一个分组，用来组织元素。&lt;div> 为块级元素，与其它元素之间会有一个空行；而 &lt;span> 为内联元素，可以在行内定义，不会进行换行。
+
+它们常见的用法是，将需要相同样式或者相同处理的元素都用 &lt;div> 或者 &lt;span> 进行分组，然后在 &lt;div> 或者 &lt;span> 中定义相同的 class 属性。
+
+&lt;div> 是块级元素，可以将每个 &lt;div> 块级元素进行定位，因此它也常用于对页面进行布局。
+
+## 背景
+
+&lt;body> 有两个可以定义背景的属性：
+
+- bgcolor 属性定义背景颜色；
+- background 属性定义背景图片。
+
+```html
+<body bgcolor="#000000">
+<body background="clouds.gif">
+```
+
+## 头部
+
+&lt;head> 是所有头部元素的容器，有以下内容：
+
+**1. &lt;title>**
+
+定义文档标题
+
+**2. &lt;link>**
+
+连接外部资源，常见的是连接样式表：
+
+```html
+<link rel="stylesheet" type="text/css" href="mystyle.css" />
+```
+
+**3. &lt;style>**
+
+定义样式信息：
+
+```html
+<style type="text/css">
+body {
+    background-color: yellow
+}
+</style>
+```
+
+**4. &lt;meta>**
+
+定义元数据。元数据不会显示在页面上，但是对于机器是可读的。常见的元数据有：页面的描述、关键词、文档的作者、最后修改时间等。
+
+**5. &lt;script>**
+
+定义 Javascript 脚本。
+
+## 字符实体
+
+HTML 中 &lt; 和 > 都会被认为是标签的一部分，因此无法直接在 HTML 文本中使用这些字符，需要进行转换，常见的转换有：（注意，后面的 ; 要保留）
+
+- &lt; : &amp;lt;
+- &gt; : &amp;gt;
+- &amp; : &amp;amp;
+- 空格 : &amp;nbsp;
+
+## 颜色
+
+可以使用数值来表示颜色，其中 rgb 每一位的取值范围为 [0, 255] ，用 16 进制表示就是 [00, FF] 。
+
+在 HTML 中黑色表示为 #000000 或者 rgb(0,0,0)，白色表示为 #FFFFFF 或者 rgb(255,255,255)。
+
+# 二、CSS
+
+## 基础
+
+CSS (Cascading Style Sheets，层叠样式表)，实现了内容和表现的分离。
+
+层叠的含义是，有多种为元素定义样式的方法，这些方法相当于一层一层叠加在元素上，元素实际只使用最顶层的样式。层叠的顺序为：
+
+- 浏览器默认样式表；
+- 外部样式表；
+- 内部样式表（位于 &lt;head> 中，使用 &lt;style> 进行定义。）；
+- 内联样式表（位于元素的标签内）。
+
+一个样式由两部分组成：选择器以及一条或者多条声明，每条声明由一个属性和一个值组成。
+
+```html
+selector {
+    property1 : value1;
+    property2 : value2;
+    ...
+}
+```
+
+## 创建样式表
+
+**1. 外部样式表**
+
+```html
+<head>
+    <link rel="stylesheet" type="text/css" href="mystyle.css" />
+</head>
+```
+
+```css
+/* mystyle.css */
+hr {
+    color: sienna;
+}
+p {
+    margin-left: 20px;
+}
+```
+
+**2. 内部样式表**
+
+```html
+<head>
+    <style type="text/css">
+    hr {
+        color: sienna;
+    }
+    p {
+        margin-left: 20px;
+    }
+    </style>
+</head>
+```
+
+**3. 内联样式表**
+
+```html
+<p style="margin-left: 20px">
+    This is a paragraph
+</p>
+```
+
+## 选择器
+
+**1. 元素选择器**
+
+选择 &lt;html>、&lt;h1> 等元素。
+
+```css
+html {
+    color: black;
+}
+```
+
+**2. 类选择器**
+
+选择属于特定类的元素，类使用 class 属性定义。
+
+```html
+<h1 class="important">
+    This heading is very important.
+</h1>
+<p class="important">
+    This paragraph is very important.
+</p>
+```
+
+```css
+.important {
+    color: red;
+}
+```
+
+**3. ID 选择器**
+
+选择具有特定 id 的元素，id 使用 id 属性定义。
+
+```html
+<p id="intro">This is a paragraph of introduction.</p>
+```
+
+```css
+#intro {
+    font-weight: bold;
+}
+```
+
+**4. 属性选择器**
+
+选择具有特定属性以及属性值的元素。
+
+```html
+<a href="http://www.w3school.com.cn/" title="W3School">W3School</a>
+```
+
+```css
+a[href="http://www.w3school.com.cn/"] {
+    color: red;
+}
+```
+
+**5. 后代选择器**
+
+又称为包含选择器，在第一个选择器选择出来的元素的所有后代中继续使用第二个选择器来选择元素。
+
+```html
+<h1>This is a <em>important</em> heading</h1>
+```
+
+```css
+h1 em {
+    color: red;
+}
+```
+
+**6. 子元素选择器**
+
+在第一个选择器选择出来的元素的所有子元素中继续使用第二个选择器来选择元素。下面的示例中，第一个段落的 &lt;strong> 元素会使用样式，而第二个段落的 &lt;strong> 元素则不会。
+
+```html
+<h1>This is <strong>very</strong> <strong>very</strong> important.</h1>
+<h1>This is <em>really <strong>very</strong></em> important.</h1>
+```
+
+```css
+h1>strong {
+    color: red;
+}
+```
+
+
+**7. 相邻兄弟选择器**
+
+在第一个选择器选择出来的元素的所有兄弟元素中继续使用第二个选择器来选择元素。
+
+```css
+h1+p {
+    margin-top: 50px;
+}
+```
+
+**8. 选择器分组**
+
+将多个选择器使用同一个样式定义，每个选择器之间用 , 分隔。
+
+```css
+h2, p {
+    color: gray;
+}
+```
+
+## 边距
+
+![](index_files/ec7be8dd-5bbc-4bae-9b16-88ea80509da2.jpg)
+
+**1. 内边距和外边距的区别**
+
+内边距是元素离边框的间距，外边距是边框与其它元素边框的间距。
+
+如果边框有颜色，使用内边框可以在视觉上很明显看出元素与边框的间距。
+
+相邻的两个框的外边距会进行合并，只保留最大的那个外边距。
+
+![](index_files/8327650d-2531-4a45-8a01-42a651a97f61.jpg)
+
+**2. 边框的使用**
+
+有两种表示边距值的方法，像素值和百分比。百分比是相对于元素大小而言。
+
+每种边距都需要指定 4 个值：上、右、下、左，4 个值需要按照这种顺序来指定，也就是从上边距开始，按顺时针方向开始指定。
+
+如果只指定 1 个值，表示 4 个边距都指定为这个值。
+
+还可以具体指定某个边距，使用 padding-top、padding-right、padding-bottom、padding-left 这种属性来指定。
+
+以下几个示例效果相同：
+
+```css
+h1 {
+    padding: 10px, 10px, 10px, 10px;
+}
+```
+```css
+h1 {
+    padding: 10px;
+}
+```
+```css
+h1 {
+    padding-top: 10px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+}
+```
+
+## 定位
+
+**1. 相对定位：relative**
+
+相对于原来的位置进行偏移，原来占据的空间仍然保留。
+
+```css
+#box_relative {
+  position: relative;
+  left: 30px;
+  top: 20px;
+}
+```
+
+![](index_files/61c1af44-5727-4a9f-9ae5-a7a8c361708b.jpg)
+
+**2. 绝对定位：absolute**
+
+相对于父元素的边框进行偏移，原来占据的空间会被删除。
+
+```css
+#box_relative {
+  position: absolute;
+  left: 30px;
+  top: 20px;
+}
+```
+
+![](index_files/910b24bd-4f00-4980-abbe-c2e03c78d257.jpg)
+
+（注：初始时框 1、框 2 和框 3 排成一行。）
+
+**3. 固定定位：fixed**
+
+和相对定位 absolute 类似，原来的空间会被删除，但是相对的是视窗进行偏移。
+
+**4. 浮动：float**
+
+可以向左或者向右进行浮动，直到浮动元素碰到另一个浮动元素或者它的父元素，浮动元素原来占据的空间会被删除。
+
+![](index_files/4d7a854b-7a6a-4899-a21f-57b8a0d41651.jpg)
+
+![](index_files/b8fc1096-3085-4e74-87ce-cfd42a4cf80e.jpg)
+
+当父元素的边框太窄，无法容纳水平排列的三个元素，那么浮动元素就会向下移动。
+
+![](index_files/3bef7655-3039-42ac-bfc1-3cde58a4d302.jpg)
+
+## 常见使用
+
+### display
+
+&lt;div>、&lt;p> 等元素属于块级元素，与其它元素之间需要用空行进行分隔。&lt;span> 属于内联元素，可以存在于其它元素内而不用换行。
+
+使用 display 属性可以将一个元素定义为块级元素或者内联元素，display : block 将一个元素定义为块级元素，display : none 将一个元素定义为内联元素。
+
+### 伪类
+
+| 属性 | 描述 |
+| -- | -- |
+| :link | 未被访问的链接元素 |
+| :visited | 已被访问的链接元素 |
+| :hover| 鼠标悬浮在上方的元素 |
+| :active| 被激活的元素 |
+| :focus| 拥有键盘输入焦点的元素 |
+| :first-child| 元素的第一个子元素 |
+
+### 链接
+
+链接有 4 种状态：
+
+- a:link
+- a:visited
+- a:hover
+- a:active
+
+### 背景
+
+```css
+p {
+    background-color: gray;
+}
+```
+
+```css
+body {
+    background-image: url(/i/eg_bg_04.gif);
+}
+```
+
+### 字体
+
+```css
+body {
+    font-family: sans-serif;
+    font-size: 60px;
+    font-weight: bold;
+    font-style: italic;
+}
+```
+
+### 文本
+
+**1. 对齐**
+
+text-align 属性，有 left、right 和 center 三个值。
+
+**2. 处理空白符**
+
+将 white-space 属性设置为 pre 时，使得文本的多余空格和换行都能保留。
+
+# 参考资料
+
+- [W3school-HTML 教程](http://www.w3school.com.cn/html/index.asp)
+- [W3school-CSS 教程](http://www.w3school.com.cn/css/index.asp)
+- [StackOverFollow : When to use margin vs padding in CSS](https://stackoverflow.com/questions/2189452/when-to-use-margin-vs-padding-in-css)
